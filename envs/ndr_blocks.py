@@ -38,7 +38,6 @@ putontable = Predicate("putontable", 1, [block_type])
 class NDRBlocksEnv(gym.Env):
     action_predicates = [pickup, puton, putontable]
     observation_predicates = [on, ontable, holding, above, clear, handempty, noiseoutcome]
-    _include_possible_actions_in_state = True
 
     def __init__(self, seed=0):
         self.action_space = LiteralSpace(self.action_predicates)
@@ -169,7 +168,7 @@ class NDRBlocksEnv(gym.Env):
 
     def step(self, action):
         ndr_list = self.operators[action.predicate]
-        full_state = self._get_full_state()
+        full_state = self._get_full_state(include_possible_actions_in_state=False)
         effects = self._sample_effects(ndr_list, full_state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
         reward = float(self._is_goal_reached())
@@ -185,10 +184,10 @@ class NDRBlocksEnv(gym.Env):
     def _get_debug_info(self):
         return { "goal" : self._goal }
 
-    def _get_full_state(self):
+    def _get_full_state(self, include_possible_actions_in_state=True):
         obs = self._state.copy()
         obs |= self._get_derived_literals(self._state)
-        if self._include_possible_actions_in_state:
+        if include_possible_actions_in_state:
             obs |= self.action_space.all_ground_literals()
         return obs
 
@@ -215,6 +214,7 @@ class NDRBlocksEnv(gym.Env):
                     grounded_effects.add(effect)
                 return grounded_effects
             elif len(assignments) > 1:
+                import ipdb; ipdb.set_trace()
                 raise Exception("Multiple rules applied to one state action.")
         raise Exception("No NDRs (including the default one?!) applied")
 
