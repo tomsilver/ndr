@@ -20,9 +20,6 @@ block_type = Type("block")
 on = Predicate("on", 2, [block_type, block_type])
 ontable = Predicate("ontable", 1, [block_type])
 holding = Predicate("holding", 1, [block_type])
-
-# Derived predicates
-above = Predicate("above", 2, [block_type, block_type])
 clear = Predicate("clear", 1, [block_type])
 handempty = Predicate("handempty", 0, [])
 
@@ -37,7 +34,7 @@ putontable = Predicate("putontable", 1, [block_type])
 
 class NDRBlocksEnv(gym.Env):
     action_predicates = [pickup, puton, putontable]
-    observation_predicates = [on, ontable, holding, above, clear, handempty, noiseoutcome]
+    observation_predicates = [on, ontable, holding, clear, handempty, noiseoutcome]
 
     def __init__(self, seed=0):
         self.action_space = LiteralSpace(self.action_predicates)
@@ -51,7 +48,7 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={holding("?y")},
                     effects=[
-                        (0.6, {Anti(holding("?y")), ontable("?y")}),
+                        (0.6, {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")}),
                         (0.3, set()),
                         (0.1, {noiseoutcome()}),
                     ],
@@ -61,7 +58,8 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={on("?x", "?y"), clear("?x"), handempty()},
                     effects=[
-                        (0.7, {holding("?x"), Anti(on("?x", "?y"))}),
+                        (0.7, {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
+                               Anti(handempty()), Anti(clear("?x"))}),
                         (0.1, set()),
                         (0.2, {noiseoutcome()}),
                     ],
@@ -71,7 +69,8 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={ontable("?x"), clear("?x"), handempty()},
                     effects=[
-                        (0.8, {holding("?x"), Anti(ontable("?x"))}),
+                        (0.8, {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
+                               Anti(clear("?x"))}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
@@ -91,21 +90,23 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=puton("?x"), 
                     preconditions={clear("?x"), holding("?y")},
                     effects=[
-                        (0.8, {Anti(holding("?y")), on("?y", "?x")}),
+                        (0.8, {Anti(holding("?y")), on("?y", "?x"), handempty(), 
+                               Anti(clear("?x")), clear("?y")}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
                 ),
+                # Removing this case because I don't know how to handle derived predicates like this
                 # If you try to puton something that is in the middle, it
                 # probably will result in stacking on the top of the stack
-                NDR(action=puton("?x"), 
-                    preconditions={clear("?z"), above("?z", "?x"), holding("?y")},
-                    effects=[
-                        (0.6, {Anti(holding("?y")), on("?y", "?z")}),
-                        (0.1, set()),
-                        (0.3, {noiseoutcome()}),
-                    ],
-                ),
+                # NDR(action=puton("?x"), 
+                #     preconditions={clear("?z"), above("?z", "?x"), holding("?y")},
+                #     effects=[
+                #         (0.6, {Anti(holding("?y")), on("?y", "?z")}),
+                #         (0.1, set()),
+                #         (0.3, {noiseoutcome()}),
+                #     ],
+                # ),
                 # Default rule
                 NDR(action=puton("?x"), 
                     preconditions={},
@@ -121,7 +122,7 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=putontable("?x"), 
                     preconditions={holding("?x")},
                     effects=[
-                        (0.8, {Anti(holding("?x")), ontable("?x")}),
+                        (0.8, {Anti(holding("?x")), ontable("?x"), clear("?x"), handempty()}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
@@ -137,32 +138,11 @@ class NDRBlocksEnv(gym.Env):
             ],
         }
 
-    def _get_derived_literals(self, state):
-        piles, holding = get_piles(state)
-
-        derived_lits = set()
-        # derive above
-        for pile in piles:
-            for i, block_i in enumerate(pile[:-1]):
-                for block_j in pile[i+1:]:
-                    derived_lits.add(above(block_j, block_i))
-
-        # derive clear
-        for pile in piles:
-            if len(pile) == 0:
-                continue
-            derived_lits.add(clear(pile[-1]))
-
-        # derive handempty
-        if holding is None:
-            derived_lits.add(handempty())
-
-        return derived_lits
-
     def reset(self):
-        self._state = { ontable("A"), ontable("B"), ontable("C") }
-        self._problem_objects = [block_type("A"), block_type("B"), block_type("C")]
-        self._goal = LiteralConjunction([on("C", "A"), on("A", "B")])
+        self._state = { ontable("a"), ontable("b"), ontable("c"), clear("a"), 
+            clear("b"), clear("c"), handempty() }
+        self._problem_objects = [block_type("a"), block_type("b"), block_type("c")]
+        self._goal = LiteralConjunction([on("c", "a"), on("a", "b")])
         self.action_space.update(self._problem_objects)
         return self._get_observation(), self._get_debug_info()
 
@@ -171,8 +151,9 @@ class NDRBlocksEnv(gym.Env):
         full_state = self._get_full_state(include_possible_actions_in_state=False)
         effects = self._sample_effects(ndr_list, full_state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
-        reward = float(self._is_goal_reached())
-        return self._get_observation(), reward, False, self._get_debug_info()
+        done = self._is_goal_reached()
+        reward = float(done)
+        return self._get_observation(), reward, done, self._get_debug_info()
 
     def render(self, *args, **kwargs):
         obs = self._get_observation()
@@ -186,9 +167,10 @@ class NDRBlocksEnv(gym.Env):
 
     def _get_full_state(self, include_possible_actions_in_state=True):
         obs = self._state.copy()
-        obs |= self._get_derived_literals(self._state)
         if include_possible_actions_in_state:
             obs |= self.action_space.all_ground_literals()
+        if noiseoutcome() in obs:
+            return { noiseoutcome() }
         return obs
 
     def _is_goal_reached(self):

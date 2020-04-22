@@ -57,9 +57,11 @@ def find_ff_replan_policy(initial_state, goal, ndr_operators, action_space, obse
         fname = '/tmp/problem.pddl'
         PDDLProblemParser.create_pddl_file(fname, objects, state, "myproblem", domain_name, goal)
         # Get plan
-        plan = planner.get_plan(fname, use_cache=False)
-        if not plan or len(plan) == 0:
-            raise NoPlanFoundException()
+        try:
+            plan = planner.get_plan(fname, use_cache=False)
+        except NoPlanFoundException:
+            # Default to random
+            return action_space.sample()
         return plan[0]
 
     return policy

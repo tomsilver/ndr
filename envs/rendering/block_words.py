@@ -131,20 +131,25 @@ def render(obs, mode='human', close=False):
         axis.set_major_formatter(plt.NullFormatter())
         axis.set_major_locator(plt.NullLocator())
 
-    table_height = height * 0.15
-    robot_height = height * 0.1
+    if any(lit.predicate.name == "noiseoutcome" for lit in obs):
 
-    piles, holding = get_objects_from_obs(obs)
-    block_width, block_height, block_positions = get_block_params(piles, width, height, 
-        table_height, robot_height)
+        plt.annotate("Noisy outcome!!!", (width/3, height/2))
 
-    robot_width = block_width * 1.4
-    robot_midx = width / 2
-    robot_midy = height - robot_height/2
+    else:
+        table_height = height * 0.15
+        robot_height = height * 0.1
 
-    draw_table(ax, width, table_height)
-    draw_blocks(ax, block_width, block_height, block_positions)
-    draw_robot(ax, robot_width, robot_height, robot_midx, robot_midy, holding,
-        block_width, block_height)
+        piles, holding = get_objects_from_obs(obs)
+        block_width, block_height, block_positions = get_block_params(piles, width, height, 
+            table_height, robot_height)
+
+        robot_width = block_width * 1.4
+        robot_midx = width / 2
+        robot_midy = height - robot_height/2
+
+        draw_table(ax, width, table_height)
+        draw_blocks(ax, block_width, block_height, block_positions)
+        draw_robot(ax, robot_width, robot_height, robot_midx, robot_midy, holding,
+            block_width, block_height)
 
     return fig2data(fig)

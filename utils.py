@@ -114,6 +114,7 @@ def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, 
 
         obs, reward, done, _ = env.step(action)
         env.render()
+        tot_reward += reward
         if verbose:
             print("Rew:", reward)
 
