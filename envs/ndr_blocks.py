@@ -4,8 +4,8 @@ Based on the environment described in ZPK.
 """
 from .rendering.block_words import render as _render
 from .rendering.block_words import get_objects_from_obs as get_piles
-from ndr.structs import Predicate, Type, Anti, NDR, ground_literal
-from .spaces import LiteralSpace
+from ndr.structs import Predicate, LiteralConjunction, Type, Anti, NDR, ground_literal
+from .spaces import LiteralSpace, LiteralSetSpace
 from ndr.inference import find_satisfying_assignments
 
 
@@ -27,7 +27,7 @@ clear = Predicate("clear", 1, [block_type])
 handempty = Predicate("handempty", 0, [])
 
 # Noise effect
-noiseoutcome = Predicate("noiseoutcome", 0)
+noiseoutcome = Predicate("noiseoutcome", 0, [])
 
 # Actions
 pickup = Predicate("pickup", 1, [block_type])
@@ -37,45 +37,48 @@ putontable = Predicate("putontable", 1, [block_type])
 
 class NDRBlocksEnv(gym.Env):
     action_predicates = [pickup, puton, putontable]
+    observation_predicates = [on, ontable, holding, above, clear, handempty, noiseoutcome]
+    _include_possible_actions_in_state = True
 
     def __init__(self, seed=0):
         self.action_space = LiteralSpace(self.action_predicates)
+        self.observation_space = LiteralSetSpace(set(self.observation_predicates))
         self._rng = np.random.RandomState(seed)
 
-        self._action_predicate_to_ndr_list = {
+        self.operators = {
             pickup : [
                 # If you try to pickup something while already holding something else,
                 # you'll probably drop the thing that you're holding
-                NDR(action=pickup("X"), 
-                    preconditions={holding("Y")},
+                NDR(action=pickup("?x"), 
+                    preconditions={holding("?y")},
                     effects=[
-                        (0.6, {Anti(holding("Y")), ontable("Y")}),
+                        (0.6, {Anti(holding("?y")), ontable("?y")}),
                         (0.3, set()),
                         (0.1, {noiseoutcome()}),
                     ],
                 ),
                 # If you try pickup something clear while it's on something else, you
                 # probably will succeed
-                NDR(action=pickup("X"), 
-                    preconditions={on("X", "Y"), clear("X"), handempty()},
+                NDR(action=pickup("?x"), 
+                    preconditions={on("?x", "?y"), clear("?x"), handempty()},
                     effects=[
-                        (0.7, {holding("X"), Anti(on("X", "Y"))}),
+                        (0.7, {holding("?x"), Anti(on("?x", "?y"))}),
                         (0.1, set()),
                         (0.2, {noiseoutcome()}),
                     ],
                 ),
                 # If you try pickup something clear while it's on the table, you
                 # probably will succeed
-                NDR(action=pickup("X"), 
-                    preconditions={ontable("X"), clear("X"), handempty()},
+                NDR(action=pickup("?x"), 
+                    preconditions={ontable("?x"), clear("?x"), handempty()},
                     effects=[
-                        (0.8, {holding("X"), Anti(ontable("X"))}),
+                        (0.8, {holding("?x"), Anti(ontable("?x"))}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
                 ),
                 # Default rule
-                NDR(action=pickup("X"), 
+                NDR(action=pickup("?x"), 
                     preconditions={},
                     effects=[
                         (0.6, set()),
@@ -86,26 +89,26 @@ class NDRBlocksEnv(gym.Env):
             puton : [
                 # If you try to puton something that is clear, it
                 # probably will succeed
-                NDR(action=puton("X"), 
-                    preconditions={clear("X"), holding("Y")},
+                NDR(action=puton("?x"), 
+                    preconditions={clear("?x"), holding("?y")},
                     effects=[
-                        (0.8, {Anti(holding("Y")), on("Y", "X")}),
+                        (0.8, {Anti(holding("?y")), on("?y", "?x")}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
                 ),
                 # If you try to puton something that is in the middle, it
                 # probably will result in stacking on the top of the stack
-                NDR(action=puton("X"), 
-                    preconditions={clear("Z"), above("Z", "X"), holding("Y")},
+                NDR(action=puton("?x"), 
+                    preconditions={clear("?z"), above("?z", "?x"), holding("?y")},
                     effects=[
-                        (0.6, {Anti(holding("Y")), on("Y", "Z")}),
+                        (0.6, {Anti(holding("?y")), on("?y", "?z")}),
                         (0.1, set()),
                         (0.3, {noiseoutcome()}),
                     ],
                 ),
                 # Default rule
-                NDR(action=puton("X"), 
+                NDR(action=puton("?x"), 
                     preconditions={},
                     effects=[
                         (0.6, set()),
@@ -116,16 +119,16 @@ class NDRBlocksEnv(gym.Env):
             putontable : [
                 # If you try to putontable and you're holding something,
                 # it will probably succeed
-                NDR(action=putontable("X"), 
-                    preconditions={holding("X")},
+                NDR(action=putontable("?x"), 
+                    preconditions={holding("?x")},
                     effects=[
-                        (0.8, {Anti(holding("X")), ontable("X")}),
+                        (0.8, {Anti(holding("?x")), ontable("?x")}),
                         (0.1, set()),
                         (0.1, {noiseoutcome()}),
                     ],
                 ),
                 # Default rule
-                NDR(action=putontable("X"), 
+                NDR(action=putontable("?x"), 
                     preconditions={},
                     effects=[
                         (0.6, set()),
@@ -160,15 +163,17 @@ class NDRBlocksEnv(gym.Env):
     def reset(self):
         self._state = { ontable("A"), ontable("B"), ontable("C") }
         self._problem_objects = [block_type("A"), block_type("B"), block_type("C")]
+        self._goal = LiteralConjunction([on("C", "A"), on("A", "B")])
         self.action_space.update(self._problem_objects)
-        return self._get_observation(), {}
+        return self._get_observation(), self._get_debug_info()
 
     def step(self, action):
-        ndr_list = self._action_predicate_to_ndr_list[action.predicate]
+        ndr_list = self.operators[action.predicate]
         full_state = self._get_full_state()
         effects = self._sample_effects(ndr_list, full_state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
-        return self._get_observation(), 0., False, {}
+        reward = float(self._is_goal_reached())
+        return self._get_observation(), reward, False, self._get_debug_info()
 
     def render(self, *args, **kwargs):
         obs = self._get_observation()
@@ -177,10 +182,18 @@ class NDRBlocksEnv(gym.Env):
     def _get_observation(self):
         return self._get_full_state()
 
+    def _get_debug_info(self):
+        return { "goal" : self._goal }
+
     def _get_full_state(self):
         obs = self._state.copy()
-        derived_lits = self._get_derived_literals(self._state)
-        return obs | derived_lits
+        obs |= self._get_derived_literals(self._state)
+        if self._include_possible_actions_in_state:
+            obs |= self.action_space.all_ground_literals()
+        return obs
+
+    def _is_goal_reached(self):
+        return self._goal.holds(self._state)
 
     @staticmethod
     def _sample_effects(ndr_list, full_state, action, rng):
@@ -202,7 +215,7 @@ class NDRBlocksEnv(gym.Env):
                     grounded_effects.add(effect)
                 return grounded_effects
             elif len(assignments) > 1:
-                raise Exception("Multiple rules applied to one state aciton.")
+                raise Exception("Multiple rules applied to one state action.")
         raise Exception("No NDRs (including the default one?!) applied")
 
     @staticmethod
@@ -222,3 +235,5 @@ class NDRBlocksEnv(gym.Env):
                 new_state.add(effect)
 
         return new_state
+
+

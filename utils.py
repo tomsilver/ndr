@@ -90,6 +90,41 @@ def run_plan(env, plan, verbose=False, check_reward=True, render=True, outdir='/
         assert tot_reward > 0
     return tot_reward
 
+def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, render=True, 
+               outdir='/tmp/', fps=3):
+    if outdir is None:
+        outdir = "/tmp/{}".format(env.__class__.__name__)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+    if render:
+        video_path = os.path.join(outdir, 'policy_{}_demo.gif'.format(env.__class__.__name__))
+        env = VideoWrapper(env, video_path, fps=fps)
+
+    obs, debug_info = env.reset()
+
+    tot_reward = 0.
+    for t in range(max_num_steps):
+        if verbose:
+            print("Obs:", obs)
+    
+        action = policy(obs)
+        if verbose:
+            print("Act:", action)
+
+        obs, reward, done, _ = env.step(action)
+        env.render()
+        if verbose:
+            print("Rew:", reward)
+
+        if done:
+            break
+
+    env.close()
+    if check_reward:
+        assert tot_reward > 0
+    return tot_reward
+
 
 class VideoWrapper(gym.Wrapper):
     def __init__(self, env, out_path, fps=30, size=None):
