@@ -108,8 +108,32 @@ def get_search_operators(transition_dataset):
     # TODO
     return []
 
+def run_greedy_search(transition_dataset, max_node_expansions=1000, rng=None):
+    if rng is None:
+        rng = np.random.RandomState(seed=0)
 
-def run_search(transition_dataset, max_node_expansions=1000, rng=None):
+    search_operators = get_search_operators(transition_dataset)
+
+    score, default_rule_set = create_default_rule_set(transition_dataset)
+    best_rule_set = default_rule_set
+    best_score = score
+
+    print("Starting greedy search with initial score", score)
+
+    for n in range(max_node_expansions):
+        rule_set = best_rule_set
+        for search_operator in search_operators:
+            scored_children = search_operator.get_children(rule_set)
+            for score, child in scored_children:
+                if score > best_score:
+                    best_rule_set = child
+                    best_score = score
+                    print("New best score:", best_score)
+                    print("New best rule set:", best_rule_set)
+
+    return best_rule_set
+
+def run_best_first_search(transition_dataset, max_node_expansions=1000, rng=None):
     if rng is None:
         rng = np.random.RandomState(seed=0)
 
@@ -153,7 +177,7 @@ def main():
     transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem)
     print("collected {} transition.".format(len(transition_dataset)))
     print("Running search...")
-    rule_set = run_search(transition_dataset, max_node_expansions=max_node_expansions)
+    rule_set = run_greedy_search(transition_dataset, max_node_expansions=max_node_expansions)
     print("Learned rule set:")
     print_rule_set(rule_set)
 
