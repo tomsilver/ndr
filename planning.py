@@ -53,9 +53,12 @@ def find_ff_replan_policy(initial_state, goal, ndr_operators, action_space, obse
 
     # Given a state, replan and execute first section in plan
     def policy(state):
+        # Add possible actions to state
+        full_state = state.copy()
+        full_state.update(action_space.all_ground_literals())
         # Create problem file
         fname = '/tmp/problem.pddl'
-        PDDLProblemParser.create_pddl_file(fname, objects, state, "myproblem", domain_name, goal)
+        PDDLProblemParser.create_pddl_file(fname, objects, full_state, "myproblem", domain_name, goal)
         # Get plan
         try:
             plan = planner.get_plan(fname, use_cache=False)

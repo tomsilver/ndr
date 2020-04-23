@@ -160,7 +160,7 @@ class NDRBlocksEnv(gym.Env):
 
     def step(self, action):
         ndr_list = self.operators[action.predicate]
-        full_state = self._get_full_state(include_possible_actions_in_state=False)
+        full_state = self._get_full_state()
         effects = self._sample_effects(ndr_list, full_state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
         done = self._is_goal_reached()
@@ -177,7 +177,7 @@ class NDRBlocksEnv(gym.Env):
     def _get_debug_info(self):
         return { "goal" : self._goal }
 
-    def _get_full_state(self, include_possible_actions_in_state=True):
+    def _get_full_state(self, include_possible_actions_in_state=False):
         obs = self._state.copy()
         if include_possible_actions_in_state:
             obs |= self.action_space.all_ground_literals()

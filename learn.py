@@ -1,6 +1,7 @@
 """Main file for NDR learning
 """
-from ndr.structs import Anti, NDR
+from ndr.structs import Anti, NDR, ground_literal, LiteralConjunction
+from ndr.inference import find_satisfying_assignments
 from envs.ndr_blocks import NDRBlocksEnv, noiseoutcome
 from collections import defaultdict
 from termcolor import colored
@@ -39,9 +40,57 @@ def construct_effects(obs, next_obs):
 def get_variable_names(num_vars, start_at=0):
     return ["X{}".format(i) for i in range(start_at, start_at+num_vars)]
 
-def score_action_rule_set(action_rule_set, transitions_for_action):
-    # TODO
-    return 0.
+def find_assignments_for_ndr(ndr, state, action):
+    kb = state | { action }
+    assert action.predicate == ndr.action.predicate
+    conds = [ndr.action] + list(ndr.preconditions)
+    return find_satisfying_assignments(kb, conds)
+
+def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, alpha=0.5):
+    # Get per-NDR penalties
+    ndr_idx_to_pen = {}
+
+    # Calculate penalty for number of literals
+    for idx, selected_ndr in enumerate(action_rule_set):
+        pen = 0
+        preconds = selected_ndr.preconditions
+        if isinstance(preconds, LiteralConjunction):
+            pen += len(preconds.literals)
+        else:
+            pen += 1
+        for _, outcome in selected_ndr.effects:
+            if isinstance(outcome, LiteralConjunction):
+                pen += len(outcome.literals)
+            else:
+                pen += 1
+        ndr_idx_to_pen[idx] = pen
+
+    # Calculate transition likelihoods per example and accumulate score
+    score = 0.
+    for (state, action, effects) in transitions_for_action:
+        selected_ndr_idx = None
+        for idx, ndr in enumerate(action_rule_set):
+            assignments = find_assignments_for_ndr(ndr, state, action)
+            if len(assignments) == 1:
+                selected_ndr_idx = idx
+                break
+        assert selected_ndr_idx is not None, "At least the default NDR should be selected"
+        selected_ndr = action_rule_set[selected_ndr_idx]
+        pen = ndr_idx_to_pen[selected_ndr_idx]
+        # Calculate transition likelihood
+        transition_likelihood = 0.
+        for prob, outcome in selected_ndr.effects:
+            if outcome == noiseoutcome():
+                # c.f. equation 3 in paper
+                transition_likelihood += p_min * prob
+            else:
+                grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
+                if grounded_outcome == effects:
+                    transition_likelihood += prob
+        # Add to score
+        score += np.log(transition_likelihood) - alpha * pen
+
+    return score
 
 def create_default_rule_set(transition_dataset):
     rule_set = {}
@@ -71,6 +120,8 @@ def run_search(transition_dataset, max_node_expansions=1000, rng=None):
     hq.heappush(queue, (0, 0, default_rule_set))
     best_rule_set = default_rule_set
     best_score = score
+
+    print("Starting search with initial score", score)
 
     for n in range(max_node_expansions):
         if len(queue) == 0:
@@ -108,4 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
