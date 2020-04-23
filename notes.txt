@@ -1,0 +1,71 @@
+zpk notes
+
+-deictic trick: we're basically already doing this, but in a slightly more sophisticated way
+
+        Tom Silver  11:54 AM
+        11:55
+        but anyway we’re slightly more sophisticated because we are able to have preconditions that collectively isolate unique bindings, even if they don’t individually
+
+        ronuchit  11:55 AM
+        interesting
+
+        Tom Silver  11:55 AM
+        e.g. we could have something like touching(X, Y) ^ red(Y)
+        11:55
+        and if there is only one object that is both touching X and red (edited) 
+        11:55
+        we could do that
+        11:55
+        even if there are multiple touching objects and multiple red objects
+
+        ronuchit  11:55 AM
+        i see
+        11:56
+        is that because they say "if AT ANY POINT the binding is not unique"
+
+        Tom Silver  11:56 AM
+        yeah
+        11:56
+        exactly
+
+        ronuchit  11:56 AM
+        that's a nice point
+        11:57
+        unlikely to make much of a diff in practice though
+        New
+        11:58
+        usually you're using these deictic references because you want each reference to bring in one parameter that is forced by the choice of free parameters, right
+        11:58
+        in which case, their strategy works fine
+
+
+todo first
+- create NDRBlocks-v0 gym environment with hardcoded NDR rules
+- convert hardcoded NDR rules into PPDDL
+- verify that we can plan with PPDDL and execute in NDRBlocks-v0
+- add noise outcome to simulator
+
+gonna not do derived predicates because they're not supported by fast forward and unclear how to do something like on*() anyway
+
+search operators
+-ExplainExamples: this is the main one. implement as is ***
+-DropLits: implement ***
+-DropRefs: subsumed by DropLits, since deictic refs are lits
+-GeneralizeEquality: ignore; no numerics
+-ChangeRanges: ignore, no numerics
+-SplitOnLits: do this ***
+-AddLits: do this ***
+-AddRefs: subsumed by AddLits, since deictic refs are lits
+-RaiseConstants: ignore, no constants
+-SplitVariables: ignore, no constants
+
+there’s a very interesting consequence of their assumption that each deictic reference picks out a unique object
+10:55
+if we made this assumption, then our PART-T->PDDL compilation would not need “foralls”, I think
+10:57
+i thought of this because one of their search operators [SplitOnLits] is really similar to what we do in the decision tree learning
+
+
+another big difference is that we assume that the NDRs partition the transition space, and so we can use the closed form thing to compute effect probabilities... wait actually no we can't... we don't make this assumption... i have no idea how we're going to address this...
+
+

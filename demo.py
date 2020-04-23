@@ -1,7 +1,7 @@
 from planning import find_policy
 from utils import run_random_agent_demo, run_plan, run_policy
 from envs.ndr_blocks import NDRBlocksEnv, pickup, puton, putontable
-
+import os
 
 def run_all(render=True, verbose=True):
     env = NDRBlocksEnv()
@@ -9,8 +9,11 @@ def run_all(render=True, verbose=True):
     goal = debug_info["goal"]
     policy = find_policy("ff_replan", initial_state, goal, env.operators, env.action_space, env.observation_space)
     total_returns = 0
-    for _ in range(10):
-        returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False)
+    for trial in range(10):
+        outdir = '/tmp/ndrblocks{}/'.format(trial)
+        os.makedirs(outdir, exist_ok=True)
+        returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
+            outdir=outdir)
         total_returns += returns
     print("Average returns:", total_returns/10.)
     # plan = [pickup("A"), puton("B"), pickup("C"), puton("A")]

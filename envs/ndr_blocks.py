@@ -138,11 +138,23 @@ class NDRBlocksEnv(gym.Env):
             ],
         }
 
+        # (initial state, goal)
+        self.problems = [
+            ({ ontable("a"), ontable("b"), ontable("c"), clear("a"), 
+               clear("b"), clear("c"), handempty() },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+        ]
+        self.num_problems = len(self.problems)
+        self._problem_idx = None
+
+    def fix_problem_index(self, idx):
+        self._problem_idx = idx
+
     def reset(self):
-        self._state = { ontable("a"), ontable("b"), ontable("c"), clear("a"), 
-            clear("b"), clear("c"), handempty() }
-        self._problem_objects = [block_type("a"), block_type("b"), block_type("c")]
-        self._goal = LiteralConjunction([on("c", "a"), on("a", "b")])
+        if self._problem_idx is None:
+            self._problem_idx = self._rng.choice(self.num_problems)
+        self._state, self._goal = self.problems[self._problem_idx]
+        self._problem_objects = sorted({ v for lit in self._state for v in lit.variables })
         self.action_space.update(self._problem_objects)
         return self._get_observation(), self._get_debug_info()
 

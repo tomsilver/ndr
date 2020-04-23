@@ -424,3 +424,12 @@ class NDR:
         self.preconditions = preconditions
         self.effects = effects
 
+    def __str__(self):
+        effs_str = "\n  ".join(["{}: {}".format(p, eff) for p, eff in self.effects])
+        return """{}:
+  Pre: {}
+  Effs: {}""".format(self.action, self.preconditions, effs_str)
+
+    def __repr__(self):
+        return str(self)
+
