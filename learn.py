@@ -46,7 +46,7 @@ def iter_variable_names():
 def find_assignments_for_ndr(ndr, state, action):
     kb = state | { action }
     assert action.predicate == ndr.action.predicate
-    conds = [ndr.action] + list(ndr.preconditions)
+    conds = [ndr.action] + list(ndr.preconditions.literals)
     return find_satisfying_assignments(kb, conds)
 
 def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, alpha=0.5):
@@ -109,7 +109,8 @@ def create_default_rule_for_action(action):
     variable_name_generator = iter_variable_names()
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
-    return NDR(action=lifted_action, preconditions=[], effects=[(1.0, noiseoutcome())])
+    return NDR(action=lifted_action, preconditions=LiteralConjunction([]), 
+        effects=[(1.0, noiseoutcome())])
 
 def covered_by_default_rule(transition, action_rule_set):
     # default rule is assumed to be last!
@@ -125,9 +126,17 @@ def rule_covers_transition(rule, transition):
         return True
     return False
 
-def induce_outcomes(rule):
-    assert rule.effects is None
+def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_rule_set=None):
     # modify the rule in place
+    assert rule.effects is None
+    # collect the transitions that this rule covers
+    covered_transitions = []
+    for transition in transitions_for_action:
+        if rule_is_default:
+            if covered_by_default_rule(transition, action_rule_set):
+                covered_transitions.append(transition)
+        elif rule_covers_transition(rule, transition):
+            covered_transitions.append(transition)
     import ipdb; ipdb.set_trace()
 
 ## Operators
@@ -186,7 +195,7 @@ def create_explain_examples_operator(transition_dataset):
                     new_rule.preconditions.literals.extend(d)
             # Step 1.3: Complete the rule
             # Call InduceOutComes to create the rule's outcomes.
-            induce_outcomes(new_rule)
+            induce_outcomes(new_rule, transitions_for_action)
             assert new_rule.effects is not None
             # Step 2: Trim literals from r
             # Create a rule set R' containing r and the default rule
@@ -203,7 +212,7 @@ def create_explain_examples_operator(transition_dataset):
                     effects=None)
                 if not rule_covers_transition(candidate_new_rule, transition):
                     continue
-                induce_outcomes(candidate_new_rule)
+                induce_outcomes(candidate_new_rule, transitions_for_action)
                 score = score_action_rule_set([candidate_new_rule, default_rule], transitions_for_action)
                 if score > best_score:
                     best_score = score
@@ -222,7 +231,8 @@ def create_explain_examples_operator(transition_dataset):
             new_rule_set.append(new_rule)
             new_rule_set.append(default_rule)
             # Recompute the parameters of the default rule
-            induce_outcomes(default_rule)
+            induce_outcomes(default_rule, transitions_for_action, 
+                rule_is_default=True, action_rule_set=new_rule_set)
             # Add R' to the return rule sets R_O
             returned_rule_sets.append(new_rule_set)
         return returned_rule_sets
