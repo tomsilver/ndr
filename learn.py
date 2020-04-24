@@ -156,9 +156,14 @@ def covered_by_default_rule(transition, action_rule_set):
     return True
 
 def rule_covers_transition(rule, transition):
-    state, action, _ = transition
+    state, action, effects = transition
     assignments = find_assignments_for_ndr(rule, state, action)
     if len(assignments) == 1:
+        assigned_vals = set(assignments[0].values())
+        for lit in effects:
+            for val in lit.variables:
+                if val not in assigned_vals:
+                    return False
         return True
     return False
 
@@ -179,7 +184,6 @@ def learn_parameters(rule, covered_transitions, maxiter=100):
         cons.append({'type': 'ineq', 'fun' : lambda x: 1. - x[i] })
     result = minimize(loss, x0, method='SLSQP', constraints=tuple(cons),
         options={'disp' : False, 'maxiter' : maxiter})
-    import ipdb; ipdb.set_trace()
     return result.x
 
 
@@ -188,7 +192,7 @@ def create_induce_outcome_add_operator(rule, covered_transitions):
     # Pick a pair of non-contradictory outcomes and conjoin them
     # (make sure not to conjoin with noiseoutcome)
     def get_children(effects):
-        for i, (p_i, effect_i) in effects[:-1]:
+        for i, (p_i, effect_i) in enumerate(effects[:-1]):
             if noiseoutcome() in effect_i:
                 continue
             for k, (p_j, effect_j) in enumerate(effects[i+1:]):
@@ -216,11 +220,29 @@ def create_induce_outcome_add_operator(rule, covered_transitions):
                     # Search for better parameters
                     rule.effects = remaining_effects
                     learn_parameters(rule, covered_transitions)
-                    yield [eff for eff in rule.effects]
+                    score = score_rule(rule, covered_transitions)
+                    yield score, [eff for eff in rule.effects]
+        return
     return get_children
 
 def create_induce_outcome_remove_operator(rule, covered_transitions):
-    raise NotImplementedError()
+    # Drop an outcome (not the noise one though!)
+    def get_children(effects):
+        for i, (p_i, effect_i) in enumerate(effects):
+            if noiseoutcome() in effect_i:
+                continue
+            remaining_effects = []
+            for j, effect in enumerate(effects):
+                if i == j:
+                    continue
+                remaining_effects.append(effect)
+                # Search for better parameters
+                rule.effects = remaining_effects
+                learn_parameters(rule, covered_transitions)
+                score = score_rule(rule, covered_transitions)
+                yield score, [eff for eff in rule.effects]
+        return
+    return get_children
 
 def create_induce_outcomes_operators(rule, covered_transitions):
     add_operator = create_induce_outcome_add_operator(rule, covered_transitions)
@@ -230,7 +252,6 @@ def create_induce_outcomes_operators(rule, covered_transitions):
 def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_rule_set=None,
                     max_node_expansions=100):
     # modify the rule in place
-    assert rule.effects is None
     # collect the transitions that this rule covers
     covered_transitions = []
     for transition in transitions_for_action:
@@ -239,17 +260,24 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
                 covered_transitions.append(transition)
         elif rule_covers_transition(rule, transition):
             covered_transitions.append(transition)
-    # Initialize effects with uniform distribution over all possible outcomes
-    all_possible_outcomes = { (noiseoutcome(),) }
-    for state, action, effects in covered_transitions:
-        assignments = find_assignments_for_ndr(rule, state, action)
-        assert len(assignments) == 1
-        inverse_sigma = {v : k for k, v in assignments[0].items()}
-        lifted_effects = set()
-        for effect in effects:
-            lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
-            lifted_effects.add(lifted_effect)
-        all_possible_outcomes.add(tuple(sorted(lifted_effects)))
+    # For default rule, the only possible outcomes are noise and nothing
+    if rule_is_default:
+        all_possible_outcomes = { (noiseoutcome(),), tuple() }
+    else:
+        # Initialize effects with uniform distribution over all possible outcomes
+        all_possible_outcomes = { (noiseoutcome(),) }
+        for state, action, effects in covered_transitions:
+            assignments = find_assignments_for_ndr(rule, state, action)
+            assert len(assignments) == 1
+            inverse_sigma = {v : k for k, v in assignments[0].items()}
+            lifted_effects = set()
+            for effect in effects:
+                try:
+                    lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
+                except:
+                    import ipdb; ipdb.set_trace()
+                lifted_effects.add(lifted_effect)
+            all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     num_possible_outcomes = len(all_possible_outcomes)
     init_state = [(1./num_possible_outcomes, list(outcome)) for outcome in sorted(all_possible_outcomes)]
     rule.effects = init_state
@@ -258,7 +286,7 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
     init_score = score_rule(rule, covered_transitions)
     search_operators = create_induce_outcomes_operators(rule, covered_transitions)
     best_effects = run_greedy_search(search_operators, init_state, init_score,
-        max_node_expansions=max_node_expansions)
+        max_node_expansions=max_node_expansions) #, verbose=True)
     rule.effects = best_effects
 
 ## Main search operators
@@ -343,7 +371,7 @@ def create_explain_examples_operator(transition_dataset):
             # Create a new rule set R' = R
             deprecated_rules = []
             # Add r to R' and remove any rules in R' that cover any examples r covers
-            for t in transitions:
+            for t in transitions_for_action:
                 if not rule_covers_transition(new_rule, t):
                     continue
                 for rule in action_rule_set:
@@ -361,10 +389,23 @@ def create_explain_examples_operator(transition_dataset):
 
 
     def explain_examples(rule_set):
-        new_rule_set = {}
+        # First calculate scores for all actions
+        action_to_score = {}
         for action, action_rule_set in rule_set.items():
-            new_rule_set[action] = explain_examples_for_action(action, action_rule_set)
-        return new_rule_set
+            transitions_for_action = transition_dataset[action]
+            score = score_action_rule_set(action_rule_set, transitions_for_action)
+            action_to_score[action] = score
+
+        # Get children
+        for action, action_rule_set in rule_set.items():
+            # Get base score for other actions
+            base_score = sum([action_to_score[a] for a in rule_set if a != action])
+            transitions_for_action = transition_dataset[action]
+            for new_action_rule_set in explain_examples_for_action(action, action_rule_set):
+                new_rule_set = {k : v for k, v in rule_set.items() }
+                new_rule_set[action] = new_action_rule_set
+                score = base_score + score_action_rule_set(new_action_rule_set, transitions_for_action)
+                yield score, new_rule_set
 
     return explain_examples
 
@@ -400,15 +441,19 @@ def run_greedy_search(search_operators, init_state, init_score,
     for n in range(max_node_expansions):
         if verbose:
             print("Expanding node {}/{}".format(n, max_node_expansions))
+        found_improvement = False
         for search_operator in search_operators:
             scored_children = search_operator(state)
             for score, child in scored_children:
                 if score > best_score:
                     state = child
                     best_score = score
+                    found_improvement = True
                     if verbose:
                         print("New best score:", best_score)
                         print("New best state:", state)
+        if not found_improvement:
+            break
 
     return state
 
@@ -447,7 +492,8 @@ def run_best_first_search(search_operators, init_state, init_score,
 def print_rule_set(rule_set):
     for action_predicate in sorted(rule_set):
         print(colored(action_predicate, attrs=['bold']))
-        print(rule_set[action_predicate])
+        for rule in rule_set[action_predicate]:
+            print(rule)
 
 def main():
     num_problems = 1
