@@ -8,6 +8,7 @@ from termcolor import colored
 from scipy.optimize import minimize
 import heapq as hq
 import numpy as np
+import copy
 
 
 ALPHA = 0.5
@@ -188,18 +189,21 @@ def create_default_rule_set(transition_dataset):
     rule_set = {}
     total_score = 0.
     for action_predicate, transitions_for_action in transition_dataset.items():
-        action_rule = create_default_rule_for_action(action_predicate)
+        action_rule = create_default_rule_for_action(action_predicate, transitions_for_action)
         action_rule_set = [action_rule]
         rule_set[action_predicate] = action_rule_set
         total_score += score_action_rule_set(action_rule_set, transitions_for_action)
     return total_score, rule_set
 
-def create_default_rule_for_action(action):
+def create_default_rule_for_action(action, transitions_for_action):
     variable_name_generator = iter_variable_names()
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
-    return NDR(action=lifted_action, preconditions=LiteralConjunction([]), 
-        effects=[(1.0, {noiseoutcome()})])
+    # return NDR(action=lifted_action, preconditions=LiteralConjunction([]), 
+        # effects=[(1.0, {noiseoutcome()})])
+    ndr = NDR(action=lifted_action, preconditions=LiteralConjunction([]), effects=None)
+    induce_outcomes(ndr, transitions_for_action)
+    return ndr
 
 def covered_by_default_rule(transition, action_rule_set):
     # default rule is assumed to be last!
@@ -356,7 +360,7 @@ def get_unique_transitions(transitions):
 def create_explain_examples_operator(transition_dataset):
     def explain_examples_for_action(action, action_rule_set):
         transitions_for_action = transition_dataset[action]
-        default_rule = create_default_rule_for_action(action)
+        default_rule = copy.deepcopy(action_rule_set[-1])
         for transition in get_unique_transitions(transitions_for_action):
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
@@ -422,6 +426,9 @@ def create_explain_examples_operator(transition_dataset):
             # Greedily trim literals from r, ensuring that r still covers (s, a, s')
             # and filling in the outcomes using InduceOutcomes until R's score stops improving
             trim_candidates = list(new_rule.preconditions.literals)
+            # Recompute the parameters of the default rule
+            induce_outcomes(default_rule, transitions_for_action, 
+                rule_is_default=True, action_rule_set=[new_rule, default_rule])
             best_score = score_action_rule_set([new_rule, default_rule], transitions_for_action)
             while len(trim_candidates) > 0:
                 lit = trim_candidates.pop()
@@ -441,6 +448,9 @@ def create_explain_examples_operator(transition_dataset):
                     if DEBUG: import ipdb; ipdb.set_trace()
                     best_score = score
                     new_rule = candidate_new_rule
+            # If preconditions are empty, don't enumerate; this should be covered by the default rule
+            if len(new_rule.preconditions.literals) == 0:
+                continue
             if DEBUG: import ipdb; ipdb.set_trace()
             # Step 3: Create a new rule set containing r
             # print("Step 3...")
@@ -456,7 +466,6 @@ def create_explain_examples_operator(transition_dataset):
                     if rule_covers_transition(rule, t):
                         deprecated_rules.add(rule)
             new_rule_set = [new_rule] + [rule for rule in action_rule_set if rule not in deprecated_rules]
-            default_rule = create_default_rule_for_action(action)
             new_rule_set[-1] = default_rule
             # Recompute the parameters of the default rule
             induce_outcomes(default_rule, transitions_for_action, 
@@ -500,6 +509,9 @@ def get_search_operators(transition_dataset):
 def run_main_search(search_method, transition_dataset, max_node_expansions=1000, rng=None):
     search_operators = get_search_operators(transition_dataset)
     init_score, init_state = create_default_rule_set(transition_dataset)
+
+    print("Initial rule set:")
+    print_rule_set(init_state)
 
     if search_method == "greedy":
         return run_greedy_search(search_operators, init_state, init_score, 
