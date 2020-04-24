@@ -10,6 +10,10 @@ import heapq as hq
 import numpy as np
 
 
+ALPHA = 100.
+DEBUG = False
+
+
 def collect_manual_transition_dataset():
     from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
     transitions = defaultdict(list)
@@ -58,14 +62,13 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
             action = policy(obs)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
-            total_count += 1
-            keep_transition = (action.predicate in actions)
-            if len(effects) == 0 or noiseoutcome() in effects:
-                num_no_effects += 1
-                if num_no_effects > total_count/2.:
-                    keep_transition = False
-                    num_no_effects -= 1
+            null_effect = len(effects) == 0 or noiseoutcome() in effects
+            keep_transition = (action.predicate in actions) and \
+                (not null_effect or (num_no_effects < total_count/2.+1))
             if keep_transition:
+                total_count += 1
+                if null_effect:
+                    num_no_effects += 1
                 transition = (obs, action, effects)
                 transitions[action.predicate].append(transition)
             obs = next_obs
@@ -94,7 +97,7 @@ def find_assignments_for_ndr(ndr, state, action):
     conds = [ndr.action] + list(ndr.preconditions.literals)
     return find_satisfying_assignments(kb, conds)
 
-def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, alpha=0.5):
+def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, alpha=ALPHA):
     # Get per-NDR penalties
     ndr_idx_to_pen = {}
 
@@ -142,7 +145,7 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, a
 
     return score
 
-def score_rule(rule, transitions_for_rule, p_min=1e-6, alpha=0.5, compute_penalty=True):
+def score_rule(rule, transitions_for_rule, p_min=1e-6, alpha=ALPHA, compute_penalty=True):
     # Calculate penalty for number of literals
     pen = 0
     if compute_penalty:
@@ -346,8 +349,8 @@ def create_explain_examples_operator(transition_dataset):
         default_rule = create_default_rule_for_action(action)
         returned_rule_sets = []
         for transition in transitions_for_action:
-            # print("Considering explaining example for transition")
-            # print_transition(transition)
+            if DEBUG: print("Considering explaining example for transition")
+            if DEBUG: print_transition(transition)
             if not covered_by_default_rule(transition, action_rule_set):
                 # print("Not covered by default rule, continuing")
                 continue
@@ -370,6 +373,7 @@ def create_explain_examples_operator(transition_dataset):
                 if all(val in sigma_inverse for val in lit.variables):
                     lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
                     new_rule.preconditions.literals.append(lifted_lit)
+            if DEBUG: import ipdb; ipdb.set_trace()
             # Step 1.2: Create deictic references for r
             # Collect the set of constants whose properties changed from s to s' but 
             # which are not in sigma
@@ -402,6 +406,7 @@ def create_explain_examples_operator(transition_dataset):
             # Call InduceOutComes to create the rule's outcomes.
             induce_outcomes(new_rule, transitions_for_action)
             assert new_rule.effects is not None
+            if DEBUG: import ipdb; ipdb.set_trace()
             # Step 2: Trim literals from r
             # print("Step 2...")
             # Create a rule set R' containing r and the default rule
@@ -423,6 +428,7 @@ def create_explain_examples_operator(transition_dataset):
                 if score > best_score:
                     best_score = score
                     new_rule = candidate_new_rule
+            if DEBUG: import ipdb; ipdb.set_trace()
             # Step 3: Create a new rule set containing r
             # print("Step 3...")
             # Create a new rule set R' = R
@@ -442,6 +448,7 @@ def create_explain_examples_operator(transition_dataset):
             # Recompute the parameters of the default rule
             induce_outcomes(default_rule, transitions_for_action, 
                 rule_is_default=True, action_rule_set=new_rule_set)
+            if DEBUG: import ipdb; ipdb.set_trace()
             # Add R' to the return rule sets R_O
             yield new_rule_set
         return
@@ -506,6 +513,8 @@ def run_greedy_search(search_operators, init_state, init_score,
         for search_operator in search_operators:
             scored_children = search_operator(state)
             for score, child in scored_children:
+                if verbose and DEBUG:
+                    import ipdb; ipdb.set_trace()
                 if score > best_score:
                     state = child
                     best_score = score
@@ -563,15 +572,15 @@ def print_transition(transition):
 
 def main():
     num_problems = 1
-    num_transitions_per_problem = 150
+    num_transitions_per_problem = 500
     max_node_expansions = 10
     search_method = "greedy"
     print("Collecting transition data... ", end='')
     # transition_dataset = collect_manual_transition_dataset()
     transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem,
-        actions=["pickup"])
+        actions=["putontable"])
     print("Transitions:")
-    for transition in transition_dataset["pickup"]:
+    for transition in transition_dataset["putontable"]:
         print_transition(transition)
         print()
     print("collected transitions for {} actions.".format(len(transition_dataset)))
