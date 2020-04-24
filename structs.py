@@ -269,6 +269,9 @@ class LiteralConjunction:
     def __eq__(self, other):
         return str(self) == str(other)
 
+    def __len__(self):
+        return len(self.literals)
+
 
 class LiteralDisjunction:
     """A logical disjunction (OR) of Literals.

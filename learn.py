@@ -9,14 +9,17 @@ from scipy.optimize import minimize
 import heapq as hq
 import numpy as np
 import copy
+import time
 
 
-ALPHA = 0.5
-P_MIN = 1e-8
+ALPHA = 0.5 # Weight on rule set size penalty
+P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
-
+## Data collection
 def collect_manual_transition_dataset():
+    """For debugging
+    """
     from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
     transitions = defaultdict(list)
 
@@ -44,13 +47,13 @@ def collect_manual_transition_dataset():
 
     return transitions
 
-def collect_transition_dataset(num_problems, num_transitions_per_problem, policy=None, seed=0,
-                               actions=("pickup", "puton", "putontable")):
+def collect_transition_dataset(env, num_problems, num_transitions_per_problem, policy=None, actions="all"):
+    """Collect transitions (state, action, effect) for the given actions
+    Make sure that no more than 50% of outcomes per action are null.
+    """
+    total_counts = defaultdict(int)
+    num_no_effects = defaultdict(int)
 
-    total_counts = {a : 0 for a in actions}
-    num_no_effects = {a : 0 for a in actions}
-
-    env = NDRBlocksEnv(seed=seed)
     assert num_problems <= env.num_problems
     if policy is None:
         policy = lambda s : env.action_space.sample()
@@ -65,7 +68,7 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
             null_effect = len(effects) == 0 or noiseoutcome() in effects
-            keep_transition = (action.predicate in actions) and \
+            keep_transition = (actions == "all" or action.predicate in actions) and \
                 (not null_effect or (num_no_effects[action.predicate] < \
                     total_counts[action.predicate]/2.+1))
             if keep_transition:
@@ -79,6 +82,9 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
     return transitions
 
 def construct_effects(obs, next_obs):
+    """Convert a next observation into effects
+    """
+    # This is just for debugging environments where noise outcomes are simulated
     if noiseoutcome() in next_obs:
         return { noiseoutcome() }
     effects = set()
@@ -88,38 +94,110 @@ def construct_effects(obs, next_obs):
         effects.add(Anti(lit))
     return effects
 
+## Helper functions
 def iter_variable_names():
+    """Generate unique variable names
+    """
     i = 0
     while True:
         yield "X{}".format(i)
         i += 1
 
 def find_assignments_for_ndr(ndr, state, action):
+    """Find all possible assignments of variables to values given
+    the action and preconditions of an ndr
+    """
     kb = state | { action }
     assert action.predicate == ndr.action.predicate
     conds = [ndr.action] + list(ndr.preconditions.literals)
     return find_satisfying_assignments(kb, conds)
 
+def rule_covers_transition(rule, transition):
+    """Check whether the action and preconditions cover the transition
+    """
+    state, action, effects = transition
+    assignments = find_assignments_for_ndr(rule, state, action)
+    # Only covers if there is a unique binding of the variables
+    if len(assignments) == 1:
+        assigned_vals = set(assignments[0].values())
+        # Only covers if all the objects in the effects are bound to vars
+        for lit in effects:
+            for val in lit.variables:
+                if val not in assigned_vals:
+                    return False
+        return True
+    return False
+
+def get_covered_transitions(rule, transitions_for_action, rule_is_default=False, action_rule_set=None):
+    """Collect the transitions that this rule covers
+    """
+    if rule_is_default:
+        assert len(rule.preconditions) == 0
+        assert action_rule_set is not None
+    else:
+        assert len(rule.preconditions) > 0
+
+    covered_transitions = []
+    for transition in transitions_for_action:
+        if rule_is_default:
+            if covered_by_default_rule(transition, action_rule_set):
+                covered_transitions.append(transition)
+        elif rule_covers_transition(rule, transition):
+            covered_transitions.append(transition)
+    return covered_transitions
+
+def print_rule_set(rule_set):
+    for action_predicate in sorted(rule_set):
+        print(colored(action_predicate, attrs=['bold']))
+        for rule in rule_set[action_predicate]:
+            print(rule)
+
+def print_transition(transition):
+    print("  State:", transition[0])
+    print("  Action:", transition[1])
+    print("  Effects:", transition[2])
+
+## Scoring
+def get_pen(rule):
+    """Helper for scores. Counts number of literals in rule to penalize
+    """
+    pen = 0
+    preconds = rule.preconditions
+    pen += len(preconds)
+    for _, outcome in rule.effects:
+        pen += len(outcome)
+    return pen
+
+def get_transition_likelihood(transition, rule, p_min=P_MIN):
+    """Calculate the likelihood of a transition for a rule that covers it
+    """
+    state, action, effects = transition
+    assignments = find_assignments_for_ndr(rule, state, action)
+    assert len(assignments) == 1, "Rule assumed to cover transition"
+    transition_likelihood = 0.
+    for prob, outcome in rule.effects:
+        if noiseoutcome() in outcome:
+            # c.f. equation 3 in paper
+            transition_likelihood += p_min * prob
+        else:
+            grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
+            if grounded_outcome == effects:
+                transition_likelihood += prob
+    return transition_likelihood
+
 def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, alpha=ALPHA):
+    """Score a full rule set for an action
+    """
     score = 0.
 
     # Calculate penalty for number of literals
-    for idx, selected_ndr in enumerate(action_rule_set):
-        pen = 0
-        preconds = selected_ndr.preconditions
-        if isinstance(preconds, LiteralConjunction):
-            pen += len(preconds.literals)
-        else:
-            pen += 1
-        for _, outcome in selected_ndr.effects:
-            if isinstance(outcome, LiteralConjunction):
-                pen += len(outcome.literals)
-            else:
-                pen += 1
+    for rule in action_rule_set:
+        pen = get_pen(rule)
         score += - alpha * pen
 
     # Calculate transition likelihoods per example and accumulate score
     for (state, action, effects) in transitions_for_action:
+        # Figure out which rule covers the transition
         selected_ndr_idx = None
         for idx, ndr in enumerate(action_rule_set):
             assignments = find_assignments_for_ndr(ndr, state, action)
@@ -129,15 +207,8 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
         assert selected_ndr_idx is not None, "At least the default NDR should be selected"
         selected_ndr = action_rule_set[selected_ndr_idx]
         # Calculate transition likelihood
-        transition_likelihood = 0.
-        for prob, outcome in selected_ndr.effects:
-            if noiseoutcome() in outcome:
-                # c.f. equation 3 in paper
-                transition_likelihood += p_min * prob
-            else:
-                grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
-                if grounded_outcome == effects:
-                    transition_likelihood += prob
+        transition_likelihood = get_transition_likelihood((state, action, effects), 
+            selected_ndr, p_min=p_min)
         # Add to score
         if transition_likelihood == 0.:
             return -10e8
@@ -146,36 +217,18 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
     return score
 
 def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_penalty=True):
+    """Score a single rule on examples that it covers
+    """
     # Calculate penalty for number of literals
     score = 0
     if compute_penalty:
-        pen = 0
-        preconds = rule.preconditions
-        if isinstance(preconds, LiteralConjunction):
-            pen += len(preconds.literals)
-        else:
-            pen += 1
-        for _, outcome in rule.effects:
-            if isinstance(outcome, LiteralConjunction):
-                pen += len(outcome.literals)
-            else:
-                pen += 1
+        pen = get_pen(rule)
         score += - alpha * pen
 
     # Calculate transition likelihoods per example and accumulate score
-    for state, action, effects in transitions_for_rule:
-        assignments = find_assignments_for_ndr(rule, state, action)
-        assert len(assignments) == 1
+    for transition in transitions_for_rule:
         # Calculate transition likelihood
-        transition_likelihood = 0.
-        for prob, outcome in rule.effects:
-            if noiseoutcome() in outcome:
-                # c.f. equation 3 in paper
-                transition_likelihood += p_min * prob
-            else:
-                grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
-                if grounded_outcome == effects:
-                    transition_likelihood += prob
+        transition_likelihood = get_transition_likelihood(transition, rule, p_min=p_min)
         # Add to score
         if transition_likelihood == 0.:
             return -10e8
@@ -183,7 +236,10 @@ def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_pen
 
     return score
 
+## Default rules
 def create_default_rule_set(transition_dataset):
+    """Create the initial rule set, containing just a default rule
+    """
     rule_set = {}
     total_score = 0.
     for action_predicate, transitions_for_action in transition_dataset.items():
@@ -194,36 +250,41 @@ def create_default_rule_set(transition_dataset):
     return total_score, rule_set
 
 def create_default_rule_for_action(action, transitions_for_action):
+    """Helper for create default rule set. One default rule for action.
+    """
     variable_name_generator = iter_variable_names()
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
-    # return NDR(action=lifted_action, preconditions=LiteralConjunction([]), 
-        # effects=[(1.0, {noiseoutcome()})])
     ndr = NDR(action=lifted_action, preconditions=LiteralConjunction([]), effects=None)
-    induce_outcomes(ndr, transitions_for_action)
+    induce_outcomes(ndr, transitions_for_action, rule_is_default=True,
+        action_rule_set=[])
     return ndr
 
 def covered_by_default_rule(transition, action_rule_set):
+    """Check whether the transition is covered by any non-default rules
+    """
     # default rule is assumed to be last!
     for rule in action_rule_set[:-1]:
         if rule_covers_transition(rule, transition):
             return False
     return True
 
-def rule_covers_transition(rule, transition):
-    state, action, effects = transition
-    assignments = find_assignments_for_ndr(rule, state, action)
-    if len(assignments) == 1:
-        assigned_vals = set(assignments[0].values())
-        for lit in effects:
-            for val in lit.variables:
-                if val not in assigned_vals:
-                    return False
-        return True
-    return False
+def get_unique_transitions(transitions):
+    """Filter out transitions that are literally identical
+    """
+    unique_transitions = []
+    seen_hashes = set()
+    for s, a, e in transitions:
+        hashed = (frozenset(s), a, frozenset(e))
+        if hashed not in seen_hashes:
+            unique_transitions.append((s, a, e))
+        seen_hashes.add(hashed)
+    return unique_transitions
 
 ## Learn parameters
 def learn_parameters(rule, covered_transitions, maxiter=100):
+    """Learn effect probabilities given the rest of a rule
+    """
     # Set up the loss
     def loss(x):
         for i, p in enumerate(x):
@@ -238,15 +299,15 @@ def learn_parameters(rule, covered_transitions, maxiter=100):
     result = minimize(loss, x0, method='SLSQP', constraints=tuple(cons), bounds=bounds,
         options={'disp' : False, 'maxiter' : maxiter})
     params = result.x
-    if any(not (0 <= p <= 1.) for p in params):
-        import ipdb; ipdb.set_trace()
+    assert all((0 <= p <= 1.) for p in params), "Optimization does not obey bounds"
     return params
 
 
 ## Induce outcomes
 def create_induce_outcome_add_operator(rule, covered_transitions):
-    # Pick a pair of non-contradictory outcomes and conjoin them
-    # (make sure not to conjoin with noiseoutcome)
+    """Pick a pair of non-contradictory outcomes and conjoin them
+       (making sure not to conjoin with noiseoutcome)
+    """
     def get_children(effects):
         for i, (p_i, effect_i) in enumerate(effects[:-1]):
             if noiseoutcome() in effect_i:
@@ -282,7 +343,8 @@ def create_induce_outcome_add_operator(rule, covered_transitions):
     return get_children
 
 def create_induce_outcome_remove_operator(rule, covered_transitions):
-    # Drop an outcome (not the noise one though!)
+    """Drop an outcome (not the noise one though!)
+    """
     def get_children(effects):
         for i, (p_i, effect_i) in enumerate(effects):
             if noiseoutcome() in effect_i:
@@ -301,31 +363,26 @@ def create_induce_outcome_remove_operator(rule, covered_transitions):
     return get_children
 
 def create_induce_outcomes_operators(rule, covered_transitions):
+    """Search operators for outcome induction
+    """
     add_operator = create_induce_outcome_add_operator(rule, covered_transitions)
     remove_operator = create_induce_outcome_remove_operator(rule, covered_transitions)
     return [add_operator, remove_operator]
 
-def get_covered_transitions(rule, transitions_for_action, rule_is_default=False, action_rule_set=None):
-    # collect the transitions that this rule covers
-    covered_transitions = []
-    for transition in transitions_for_action:
-        if rule_is_default:
-            if covered_by_default_rule(transition, action_rule_set):
-                covered_transitions.append(transition)
-        elif rule_covers_transition(rule, transition):
-            covered_transitions.append(transition)
-    return covered_transitions
-
 def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_rule_set=None,
                     max_node_expansions=100):
-    # modify the rule in place
+    """Induce outcomes for a rule
+
+    Modifies the rule in place.
+    """
+    # Find all transitions covered by this rule (only uses the action and preconditions)
     covered_transitions = get_covered_transitions(rule, transitions_for_action,
         rule_is_default=rule_is_default, action_rule_set=action_rule_set)
+    # Get all possible outcomes
     # For default rule, the only possible outcomes are noise and nothing
     if rule_is_default:
         all_possible_outcomes = { (noiseoutcome(),), tuple() }
     else:
-        # Initialize effects with uniform distribution over all possible outcomes
         all_possible_outcomes = { (noiseoutcome(),) }
         for state, action, effects in covered_transitions:
             assignments = find_assignments_for_ndr(rule, state, action)
@@ -336,45 +393,44 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
                 lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
                 lifted_effects.add(lifted_effect)
             all_possible_outcomes.add(tuple(sorted(lifted_effects)))
+    # Initialize effects with uniform distribution over all possible outcomes
     num_possible_outcomes = len(all_possible_outcomes)
     init_state = [(1./num_possible_outcomes, list(outcome)) for outcome in sorted(all_possible_outcomes)]
     rule.effects = init_state
     # Search for better parameters
     learn_parameters(rule, covered_transitions)
     init_score = score_rule(rule, covered_transitions)
+    # Search for better effects
     search_operators = create_induce_outcomes_operators(rule, covered_transitions)
     best_effects = run_greedy_search(search_operators, init_state, init_score,
-        max_node_expansions=max_node_expansions) #, verbose=True)
+        max_node_expansions=max_node_expansions)
     rule.effects = best_effects
-
-def get_unique_transitions(transitions):
-    unique_transitions = []
-    seen_hashes = set()
-    for s, a, e in transitions:
-        hashed = (frozenset(s), a, frozenset(e))
-        if hashed not in seen_hashes:
-            unique_transitions.append((s, a, e))
-        seen_hashes.add(hashed)
-    return unique_transitions
 
 ## Main search operators
 def create_explain_examples_operator(transition_dataset):
+    """Explain examples, the beefiest search operator
+
+    Tries to follow the pseudocode in the paper as faithfully as possible
+    """
     def explain_examples_for_action(action, action_rule_set):
+        """Helper that explains examples for a single action
+        """
         transitions_for_action = transition_dataset[action]
-        default_rule = copy.deepcopy(action_rule_set[-1])
         unique_transitions = get_unique_transitions(transitions_for_action)
         for i, transition in enumerate(unique_transitions):
             if not DEBUG:
                 print("Running explain examples for action {} {}/{}".format(action, i, 
                     len(unique_transitions)), end='\r')
+                if i == len(unique_transitions) -1:
+                    print()
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
+            # Only want to explain examples that are covered by the default rule
+            # i.e., that are not covered by a regular rule
             if not covered_by_default_rule(transition, action_rule_set):
-                # print("Not covered by default rule, continuing")
                 continue
             s, a, effs = transition
             # Step 1: Create a new rule
-            # print("Step 1...")
             new_rule = NDR(action=None, preconditions=LiteralConjunction([]), effects=None)
             # Step 1.1: Create an action and context for r
             # Create new variables to represent the arguments of a
@@ -426,12 +482,12 @@ def create_explain_examples_operator(transition_dataset):
             assert new_rule.effects is not None
             if DEBUG: import ipdb; ipdb.set_trace()
             # Step 2: Trim literals from r
-            # print("Step 2...")
             # Create a rule set R' containing r and the default rule
             # Greedily trim literals from r, ensuring that r still covers (s, a, s')
             # and filling in the outcomes using InduceOutcomes until R's score stops improving
             trim_candidates = list(new_rule.preconditions.literals)
             # Recompute the parameters of the default rule
+            default_rule = copy.deepcopy(action_rule_set[-1])
             induce_outcomes(default_rule, transitions_for_action, 
                 rule_is_default=True, action_rule_set=[new_rule, default_rule])
             best_score = score_action_rule_set([new_rule, default_rule], transitions_for_action)
@@ -439,6 +495,9 @@ def create_explain_examples_operator(transition_dataset):
                 lit = trim_candidates.pop()
                 candidate_preconditions = LiteralConjunction(
                     [l for l in new_rule.preconditions.literals if l != lit])
+                # If preconditions are empty, don't enumerate; this should be covered by the default rule
+                if len(candidate_preconditions) == 0:
+                    break
                 candidate_new_rule = NDR(action=new_rule.action, 
                     preconditions=candidate_preconditions,
                     effects=None)
@@ -458,7 +517,6 @@ def create_explain_examples_operator(transition_dataset):
                 continue
             if DEBUG: import ipdb; ipdb.set_trace()
             # Step 3: Create a new rule set containing r
-            # print("Step 3...")
             # Create a new rule set R' = R
             deprecated_rules = set()
             # Add r to R' and remove any rules in R' that cover any examples r covers
@@ -482,6 +540,8 @@ def create_explain_examples_operator(transition_dataset):
 
 
     def explain_examples(rule_set):
+        """The operator for explain examples
+        """
         # First calculate scores for all actions
         action_to_score = {}
         for action, action_rule_set in rule_set.items():
@@ -499,19 +559,21 @@ def create_explain_examples_operator(transition_dataset):
                 new_rule_set[action] = new_action_rule_set
                 score = base_score + score_action_rule_set(new_action_rule_set, transitions_for_action)
                 if DEBUG: import ipdb; ipdb.set_trace()
-                # print("New rule set child for explain examples:")
-                # print_rule_set(new_rule_set)
                 yield score, new_rule_set
 
     return explain_examples
 
 def get_search_operators(transition_dataset):
+    """Main search operators
+    """
     explain_examples = create_explain_examples_operator(transition_dataset)
 
     return [explain_examples]
 
 ## Search
 def run_main_search(search_method, transition_dataset, max_node_expansions=1000, rng=None):
+    """Run the main search
+    """
     search_operators = get_search_operators(transition_dataset)
     init_score, init_state = create_default_rule_set(transition_dataset)
 
@@ -529,6 +591,8 @@ def run_main_search(search_method, transition_dataset, max_node_expansions=1000,
 
 def run_greedy_search(search_operators, init_state, init_score,
                       max_node_expansions=1000, rng=None, verbose=False):
+    """Greedy search
+    """
     if rng is None:
         rng = np.random.RandomState(seed=0)
 
@@ -560,6 +624,8 @@ def run_greedy_search(search_operators, init_state, init_score,
 
 def run_best_first_search(search_operators, init_state, init_score,
                           max_node_expansions=1000, rng=None, verbose=False):
+    """Best first search
+    """
     if rng is None:
         rng = np.random.RandomState(seed=0)
 
@@ -590,17 +656,6 @@ def run_best_first_search(search_operators, init_state, init_score,
 
     return best_state
 
-def print_rule_set(rule_set):
-    for action_predicate in sorted(rule_set):
-        print(colored(action_predicate, attrs=['bold']))
-        for rule in rule_set[action_predicate]:
-            print(rule)
-
-def print_transition(transition):
-    print("  State:", transition[0])
-    print("  Action:", transition[1])
-    print("  Effects:", transition[2])
-
 def main():
     num_problems = 3
     num_transitions_per_problem = 250
@@ -608,17 +663,15 @@ def main():
     search_method = "greedy"
     print("Collecting transition data... ", end='')
     # transition_dataset = collect_manual_transition_dataset()
-    transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem,
-        actions=["pickup"])
-    print("Transitions:")
-    for transition in transition_dataset["pickup"]:
-        print_transition(transition)
-        print()
+    env = NDRBlocksEnv(seed=0)
+    transition_dataset = collect_transition_dataset(env, num_problems, num_transitions_per_problem)
     print("collected transitions for {} actions.".format(len(transition_dataset)))
     print("Running search...")
+    start_time = time.time()
     rule_set = run_main_search(search_method, transition_dataset, max_node_expansions=max_node_expansions)
     print("Learned rule set:")
     print_rule_set(rule_set)
+    print("Total search time:", time.time() - start_time)
 
 if __name__ == "__main__":
     main()
