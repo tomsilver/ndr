@@ -49,9 +49,9 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={holding("?y")},
                     effects=[
-                        (0.6, {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")}),
-                        (0.3, set()),
-                        (0.1, {noiseoutcome()}),
+                        (1., {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")}),
+                        (0., set()),
+                        (0., {noiseoutcome()}),
                     ],
                 ),
                 # If you try pickup something clear while it's on something else, you
@@ -59,10 +59,10 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={on("?x", "?y"), clear("?x"), handempty()},
                     effects=[
-                        (0.7, {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
+                        (1., {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
                                Anti(handempty()), Anti(clear("?x"))}),
-                        (0.1, set()),
-                        (0.2, {noiseoutcome()}),
+                        (0., set()),
+                        (0., {noiseoutcome()}),
                     ],
                 ),
                 # If you try pickup something clear while it's on the table, you
@@ -70,21 +70,63 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={ontable("?x"), clear("?x"), handempty()},
                     effects=[
-                        (0.8, {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
+                        (1., {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
                                Anti(clear("?x"))}),
-                        (0.1, set()),
-                        (0.1, {noiseoutcome()}),
+                        (0., set()),
+                        (0., {noiseoutcome()}),
                     ],
                 ),
                 # Default rule
                 NDR(action=pickup("?x"), 
                     preconditions={},
                     effects=[
-                        (0.9, set()),
-                        (0.1, {noiseoutcome()}),
+                        (1., set()),
+                        (0., {noiseoutcome()}),
                     ],
                 ),
             ],
+            # pickup : [
+            #     # If you try to pickup something while already holding something else,
+            #     # you'll probably drop the thing that you're holding
+            #     NDR(action=pickup("?x"), 
+            #         preconditions={holding("?y")},
+            #         effects=[
+            #             (0.6, {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")}),
+            #             (0.3, set()),
+            #             (0.1, {noiseoutcome()}),
+            #         ],
+            #     ),
+            #     # If you try pickup something clear while it's on something else, you
+            #     # probably will succeed
+            #     NDR(action=pickup("?x"), 
+            #         preconditions={on("?x", "?y"), clear("?x"), handempty()},
+            #         effects=[
+            #             (0.7, {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
+            #                    Anti(handempty()), Anti(clear("?x"))}),
+            #             (0.1, set()),
+            #             (0.2, {noiseoutcome()}),
+            #         ],
+            #     ),
+            #     # If you try pickup something clear while it's on the table, you
+            #     # probably will succeed
+            #     NDR(action=pickup("?x"), 
+            #         preconditions={ontable("?x"), clear("?x"), handempty()},
+            #         effects=[
+            #             (0.8, {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
+            #                    Anti(clear("?x"))}),
+            #             (0.1, set()),
+            #             (0.1, {noiseoutcome()}),
+            #         ],
+            #     ),
+            #     # Default rule
+            #     NDR(action=pickup("?x"), 
+            #         preconditions={},
+            #         effects=[
+            #             (0.9, set()),
+            #             (0.1, {noiseoutcome()}),
+            #         ],
+            #     ),
+            # ],
             puton : [
                 # If you try to puton something that is clear, it
                 # probably will succeed

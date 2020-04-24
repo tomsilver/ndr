@@ -344,13 +344,20 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
         max_node_expansions=max_node_expansions) #, verbose=True)
     rule.effects = best_effects
 
+def get_unique_transitions(transitions):
+    seen_hashes = set()
+    for s, a, e in transitions:
+        hashed = (frozenset(s), a, frozenset(e))
+        if hashed not in seen_hashes:
+            yield (s, a, e)
+        seen_hashes.add(hashed)
+
 ## Main search operators
 def create_explain_examples_operator(transition_dataset):
     def explain_examples_for_action(action, action_rule_set):
         transitions_for_action = transition_dataset[action]
         default_rule = create_default_rule_for_action(action)
-        returned_rule_sets = []
-        for transition in transitions_for_action:
+        for transition in get_unique_transitions(transitions_for_action):
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
             if not covered_by_default_rule(transition, action_rule_set):
@@ -438,7 +445,7 @@ def create_explain_examples_operator(transition_dataset):
             # Step 3: Create a new rule set containing r
             # print("Step 3...")
             # Create a new rule set R' = R
-            deprecated_rules = []
+            deprecated_rules = set()
             # Add r to R' and remove any rules in R' that cover any examples r covers
             for t in transitions_for_action:
                 if not rule_covers_transition(new_rule, t):
@@ -447,7 +454,7 @@ def create_explain_examples_operator(transition_dataset):
                 for rule in action_rule_set[:-1]:
                     # If default, continue
                     if rule_covers_transition(rule, t):
-                        deprecated_rules.append(rule)
+                        deprecated_rules.add(rule)
             new_rule_set = [new_rule] + [rule for rule in action_rule_set if rule not in deprecated_rules]
             default_rule = create_default_rule_for_action(action)
             new_rule_set[-1] = default_rule
@@ -585,9 +592,9 @@ def main():
     print("Collecting transition data... ", end='')
     # transition_dataset = collect_manual_transition_dataset()
     transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem,
-        actions=["putontable"])
+        actions=["pickup"])
     print("Transitions:")
-    for transition in transition_dataset["putontable"]:
+    for transition in transition_dataset["pickup"]:
         print_transition(transition)
         print()
     print("collected transitions for {} actions.".format(len(transition_dataset)))
