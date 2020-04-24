@@ -101,8 +101,7 @@ def find_assignments_for_ndr(ndr, state, action):
     return find_satisfying_assignments(kb, conds)
 
 def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, alpha=ALPHA):
-    # Get per-NDR penalties
-    ndr_idx_to_pen = {}
+    score = 0.
 
     # Calculate penalty for number of literals
     for idx, selected_ndr in enumerate(action_rule_set):
@@ -117,10 +116,9 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
                 pen += len(outcome.literals)
             else:
                 pen += 1
-        ndr_idx_to_pen[idx] = pen
+        score += - alpha * pen
 
     # Calculate transition likelihoods per example and accumulate score
-    score = 0.
     for (state, action, effects) in transitions_for_action:
         selected_ndr_idx = None
         for idx, ndr in enumerate(action_rule_set):
@@ -130,7 +128,6 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
                 break
         assert selected_ndr_idx is not None, "At least the default NDR should be selected"
         selected_ndr = action_rule_set[selected_ndr_idx]
-        pen = ndr_idx_to_pen[selected_ndr_idx]
         # Calculate transition likelihood
         transition_likelihood = 0.
         for prob, outcome in selected_ndr.effects:
@@ -144,14 +141,15 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
         # Add to score
         if transition_likelihood == 0.:
             return -10e8
-        score += np.log(transition_likelihood) - alpha * pen
+        score += np.log(transition_likelihood)
 
     return score
 
 def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_penalty=True):
     # Calculate penalty for number of literals
-    pen = 0
+    score = 0
     if compute_penalty:
+        pen = 0
         preconds = rule.preconditions
         if isinstance(preconds, LiteralConjunction):
             pen += len(preconds.literals)
@@ -162,9 +160,9 @@ def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_pen
                 pen += len(outcome.literals)
             else:
                 pen += 1
+        score += - alpha * pen
 
     # Calculate transition likelihoods per example and accumulate score
-    score = 0.
     for state, action, effects in transitions_for_rule:
         assignments = find_assignments_for_ndr(rule, state, action)
         assert len(assignments) == 1
@@ -181,7 +179,7 @@ def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_pen
         # Add to score
         if transition_likelihood == 0.:
             return -10e8
-        score += np.log(transition_likelihood) - alpha * pen
+        score += np.log(transition_likelihood)
 
     return score
 
@@ -233,7 +231,9 @@ def learn_parameters(rule, covered_transitions, maxiter=100):
             rule.effects[i] = (p, eff)
         return -1. * score_rule(rule, covered_transitions, compute_penalty=False)
     # Set up init x
-    x0 = [p for p, _ in rule.effects]
+    # This led to numerical issues...
+    # x0 = [p for p, _ in rule.effects]
+    x0 = [1./len(rule.effects) for _ in rule.effects]
     # Run optimization
     cons = [{'type': 'eq', 'fun' : lambda x: sum(x) - 1. }]
     for i in range(len(x0)):
@@ -349,19 +349,25 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
     rule.effects = best_effects
 
 def get_unique_transitions(transitions):
+    unique_transitions = []
     seen_hashes = set()
     for s, a, e in transitions:
         hashed = (frozenset(s), a, frozenset(e))
         if hashed not in seen_hashes:
-            yield (s, a, e)
+            unique_transitions.append((s, a, e))
         seen_hashes.add(hashed)
+    return unique_transitions
 
 ## Main search operators
 def create_explain_examples_operator(transition_dataset):
     def explain_examples_for_action(action, action_rule_set):
         transitions_for_action = transition_dataset[action]
         default_rule = copy.deepcopy(action_rule_set[-1])
-        for transition in get_unique_transitions(transitions_for_action):
+        unique_transitions = get_unique_transitions(transitions_for_action)
+        for i, transition in enumerate(unique_transitions):
+            if not DEBUG:
+                print("Running explain examples for action {} {}/{}".format(action, i, 
+                    len(unique_transitions)), end='\r')
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
             if not covered_by_default_rule(transition, action_rule_set):
@@ -598,7 +604,7 @@ def print_transition(transition):
 
 def main():
     num_problems = 3
-    num_transitions_per_problem = 100
+    num_transitions_per_problem = 250
     max_node_expansions = 10
     search_method = "greedy"
     print("Collecting transition data... ", end='')
