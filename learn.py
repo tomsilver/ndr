@@ -237,19 +237,7 @@ def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_pen
     return score
 
 ## Default rules
-def create_default_rule_set(transition_dataset):
-    """Create the initial rule set, containing just a default rule
-    """
-    rule_set = {}
-    total_score = 0.
-    for action_predicate, transitions_for_action in transition_dataset.items():
-        action_rule = create_default_rule_for_action(action_predicate, transitions_for_action)
-        action_rule_set = [action_rule]
-        rule_set[action_predicate] = action_rule_set
-        total_score += score_action_rule_set(action_rule_set, transitions_for_action)
-    return total_score, rule_set
-
-def create_default_rule_for_action(action, transitions_for_action):
+def create_default_rule_set_for_action(action, transitions_for_action):
     """Helper for create default rule set. One default rule for action.
     """
     variable_name_generator = iter_variable_names()
@@ -258,7 +246,8 @@ def create_default_rule_for_action(action, transitions_for_action):
     ndr = NDR(action=lifted_action, preconditions=LiteralConjunction([]), effects=None)
     induce_outcomes(ndr, transitions_for_action, rule_is_default=True,
         action_rule_set=[])
-    return ndr
+    score = score_action_rule_set([ndr], transitions_for_action)
+    return score, [ndr]
 
 def covered_by_default_rule(transition, action_rule_set):
     """Check whether the transition is covered by any non-default rules
@@ -407,16 +396,16 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
     rule.effects = best_effects
 
 ## Main search operators
-def create_explain_examples_operator(transition_dataset):
+def create_explain_examples_operator(action, transitions_for_action):
     """Explain examples, the beefiest search operator
 
     Tries to follow the pseudocode in the paper as faithfully as possible
     """
-    def explain_examples_for_action(action, action_rule_set):
-        """Helper that explains examples for a single action
+    unique_transitions = get_unique_transitions(transitions_for_action)
+
+    def explain_examples_for_action(action_rule_set):
+        """The operator
         """
-        transitions_for_action = transition_dataset[action]
-        unique_transitions = get_unique_transitions(transitions_for_action)
         for i, transition in enumerate(unique_transitions):
             if not DEBUG:
                 print("Running explain examples for action {} {}/{}".format(action, i, 
@@ -535,38 +524,16 @@ def create_explain_examples_operator(transition_dataset):
                 rule_is_default=True, action_rule_set=new_rule_set)
             if DEBUG: import ipdb; ipdb.set_trace()
             # Add R' to the return rule sets R_O
-            yield new_rule_set
+            score = score_action_rule_set(new_rule_set, transitions_for_action)
+            yield score, new_rule_set
         return
 
+    return explain_examples_for_action
 
-    def explain_examples(rule_set):
-        """The operator for explain examples
-        """
-        # First calculate scores for all actions
-        action_to_score = {}
-        for action, action_rule_set in rule_set.items():
-            transitions_for_action = transition_dataset[action]
-            score = score_action_rule_set(action_rule_set, transitions_for_action)
-            action_to_score[action] = score
-
-        # Get children
-        for action, action_rule_set in rule_set.items():
-            # Get base score for other actions
-            base_score = sum([action_to_score[a] for a in rule_set if a != action])
-            transitions_for_action = transition_dataset[action]
-            for new_action_rule_set in explain_examples_for_action(action, action_rule_set):
-                new_rule_set = {k : v for k, v in rule_set.items() }
-                new_rule_set[action] = new_action_rule_set
-                score = base_score + score_action_rule_set(new_action_rule_set, transitions_for_action)
-                if DEBUG: import ipdb; ipdb.set_trace()
-                yield score, new_rule_set
-
-    return explain_examples
-
-def get_search_operators(transition_dataset):
+def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
-    explain_examples = create_explain_examples_operator(transition_dataset)
+    explain_examples = create_explain_examples_operator(action, transitions_for_action)
 
     return [explain_examples]
 
@@ -574,20 +541,29 @@ def get_search_operators(transition_dataset):
 def run_main_search(search_method, transition_dataset, max_node_expansions=1000, rng=None):
     """Run the main search
     """
-    search_operators = get_search_operators(transition_dataset)
-    init_score, init_state = create_default_rule_set(transition_dataset)
+    rule_sets = {}
 
-    print("Initial rule set:")
-    print_rule_set(init_state)
+    for action, transitions_for_action in transition_dataset.items():
+        print("Running search for action", action)
 
-    if search_method == "greedy":
-        return run_greedy_search(search_operators, init_state, init_score, 
-            max_node_expansions=max_node_expansions, rng=rng, verbose=True)
-    if search_method == "best_first":
-        return run_best_first_search(search_operators, init_state, init_score, 
-            max_node_expansions=max_node_expansions, rng=rng, verbose=True)
+        search_operators = get_search_operators(action, transitions_for_action)
+        init_score, init_state = create_default_rule_set_for_action(action, transitions_for_action)
 
-    raise NotImplementedError()
+        print("Initial rule set:")
+        print_rule_set({action : init_state})
+
+        if search_method == "greedy":
+            action_rule_set = run_greedy_search(search_operators, init_state, init_score, 
+                max_node_expansions=max_node_expansions, rng=rng, verbose=True)
+        elif search_method == "best_first":
+            action_rule_set = run_best_first_search(search_operators, init_state, init_score, 
+                max_node_expansions=max_node_expansions, rng=rng, verbose=True)
+        else:
+            raise NotImplementedError()
+
+        rule_sets[action] = action_rule_set
+
+    return rule_sets
 
 def run_greedy_search(search_operators, init_state, init_score,
                       max_node_expansions=1000, rng=None, verbose=False):
