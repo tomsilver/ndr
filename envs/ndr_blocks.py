@@ -38,6 +38,7 @@ class NDRBlocksEnv(gym.Env):
 
     def __init__(self, seed=0):
         self.action_space = LiteralSpace(self.action_predicates)
+        self.action_space.seed(seed)
         self.observation_space = LiteralSetSpace(set(self.observation_predicates))
         self._rng = np.random.RandomState(seed)
 
@@ -140,6 +141,9 @@ class NDRBlocksEnv(gym.Env):
 
         # (initial state, goal)
         self.problems = [
+            ({ on("a", "b"), on("b", "c"), ontable("c"), clear("a"), 
+               handempty() },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
             ({ ontable("a"), ontable("b"), ontable("c"), clear("a"), 
                clear("b"), clear("c"), handempty() },
                LiteralConjunction([on("c", "a"), on("a", "b")])),
@@ -163,8 +167,8 @@ class NDRBlocksEnv(gym.Env):
         full_state = self._get_full_state()
         effects = self._sample_effects(ndr_list, full_state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
-        done = self._is_goal_reached()
-        reward = float(done)
+        done = self._is_goal_reached() or noiseoutcome() in self._state
+        reward = float(self._is_goal_reached())
         return self._get_observation(), reward, done, self._get_debug_info()
 
     def render(self, *args, **kwargs):

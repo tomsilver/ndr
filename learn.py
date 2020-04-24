@@ -10,8 +10,18 @@ import heapq as hq
 import numpy as np
 
 
-def collect_transition_dataset(num_problems, num_transitions_per_problem, policy=None):
-    env = NDRBlocksEnv()
+def collect_manual_transition_dataset():
+    from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
+    transitions = defaultdict(list)
+    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+    action = pickup("a")
+    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
+        holding("a")}
+    transitions[action.predicate].append((state, action, effects))
+    return transitions
+
+def collect_transition_dataset(num_problems, num_transitions_per_problem, policy=None, seed=0):
+    env = NDRBlocksEnv(seed=seed)
     assert num_problems <= env.num_problems
     if policy is None:
         policy = lambda s : env.action_space.sample()
@@ -31,6 +41,8 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
     return transitions
 
 def construct_effects(obs, next_obs):
+    if noiseoutcome() in next_obs:
+        return { noiseoutcome() }
     effects = set()
     for lit in next_obs - obs:
         effects.add(lit)
@@ -92,6 +104,8 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, a
                 if grounded_outcome == effects:
                     transition_likelihood += prob
         # Add to score
+        if transition_likelihood == 0.:
+            return -10e8
         score += np.log(transition_likelihood) - alpha * pen
 
     return score
@@ -127,6 +141,8 @@ def score_rule(rule, transitions_for_rule, p_min=1e-6, alpha=0.5, compute_penalt
                 if grounded_outcome == effects:
                     transition_likelihood += prob
         # Add to score
+        if transition_likelihood == 0.:
+            return -10e8
         score += np.log(transition_likelihood) - alpha * pen
 
     return score
@@ -249,9 +265,7 @@ def create_induce_outcomes_operators(rule, covered_transitions):
     remove_operator = create_induce_outcome_remove_operator(rule, covered_transitions)
     return [add_operator, remove_operator]
 
-def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_rule_set=None,
-                    max_node_expansions=100):
-    # modify the rule in place
+def get_covered_transitions(rule, transitions_for_action, rule_is_default=False, action_rule_set=None):
     # collect the transitions that this rule covers
     covered_transitions = []
     for transition in transitions_for_action:
@@ -260,6 +274,13 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
                 covered_transitions.append(transition)
         elif rule_covers_transition(rule, transition):
             covered_transitions.append(transition)
+    return covered_transitions
+
+def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_rule_set=None,
+                    max_node_expansions=100):
+    # modify the rule in place
+    covered_transitions = get_covered_transitions(rule, transitions_for_action,
+        rule_is_default=rule_is_default, action_rule_set=action_rule_set)
     # For default rule, the only possible outcomes are noise and nothing
     if rule_is_default:
         all_possible_outcomes = { (noiseoutcome(),), tuple() }
@@ -272,10 +293,7 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
             inverse_sigma = {v : k for k, v in assignments[0].items()}
             lifted_effects = set()
             for effect in effects:
-                try:
-                    lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
-                except:
-                    import ipdb; ipdb.set_trace()
+                lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
                 lifted_effects.add(lifted_effect)
             all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     num_possible_outcomes = len(all_possible_outcomes)
@@ -296,10 +314,14 @@ def create_explain_examples_operator(transition_dataset):
         default_rule = create_default_rule_for_action(action)
         returned_rule_sets = []
         for transition in transitions_for_action:
+            # print("Considering explaining example for transition")
+            print_transition(transition)
             if not covered_by_default_rule(transition, action_rule_set):
+                # print("Not covered by default rule, continuing")
                 continue
             s, a, effs = transition
             # Step 1: Create a new rule
+            # print("Step 1...")
             new_rule = NDR(action=None, preconditions=LiteralConjunction([]), effects=None)
             # Step 1.1: Create an action and context for r
             # Create new variables to represent the arguments of a
@@ -348,6 +370,7 @@ def create_explain_examples_operator(transition_dataset):
             induce_outcomes(new_rule, transitions_for_action)
             assert new_rule.effects is not None
             # Step 2: Trim literals from r
+            # print("Step 2...")
             # Create a rule set R' containing r and the default rule
             # Greedily trim literals from r, ensuring that r still covers (s, a, s')
             # and filling in the outcomes using InduceOutcomes until R's score stops improving
@@ -368,6 +391,7 @@ def create_explain_examples_operator(transition_dataset):
                     best_score = score
                     new_rule = candidate_new_rule
             # Step 3: Create a new rule set containing r
+            # print("Step 3...")
             # Create a new rule set R' = R
             deprecated_rules = []
             # Add r to R' and remove any rules in R' that cover any examples r covers
@@ -384,8 +408,8 @@ def create_explain_examples_operator(transition_dataset):
             induce_outcomes(default_rule, transitions_for_action, 
                 rule_is_default=True, action_rule_set=new_rule_set)
             # Add R' to the return rule sets R_O
-            returned_rule_sets.append(new_rule_set)
-        return returned_rule_sets
+            yield new_rule_set
+        return
 
 
     def explain_examples(rule_set):
@@ -405,6 +429,8 @@ def create_explain_examples_operator(transition_dataset):
                 new_rule_set = {k : v for k, v in rule_set.items() }
                 new_rule_set[action] = new_action_rule_set
                 score = base_score + score_action_rule_set(new_action_rule_set, transitions_for_action)
+                # print("New rule set child for explain examples:")
+                # print_rule_set(new_rule_set)
                 yield score, new_rule_set
 
     return explain_examples
@@ -495,13 +521,23 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
+def print_transition(transition):
+    print("  State:", transition[0])
+    print("  Action:", transition[1])
+    print("  Effects:", transition[2])
+
 def main():
     num_problems = 1
-    num_transitions_per_problem = 10
+    num_transitions_per_problem = 150
     max_node_expansions = 10
     search_method = "greedy"
     print("Collecting transition data... ", end='')
-    transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem)
+    transition_dataset = collect_manual_transition_dataset()
+    # transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem)
+    print("Transitions:")
+    for transition in transition_dataset["pickup"]:
+        print_transition(transition)
+        print()
     print("collected transitions for {} actions.".format(len(transition_dataset)))
     print("Running search...")
     rule_set = run_main_search(search_method, transition_dataset, max_node_expansions=max_node_expansions)
