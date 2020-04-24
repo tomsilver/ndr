@@ -315,7 +315,7 @@ def create_explain_examples_operator(transition_dataset):
         returned_rule_sets = []
         for transition in transitions_for_action:
             # print("Considering explaining example for transition")
-            print_transition(transition)
+            # print_transition(transition)
             if not covered_by_default_rule(transition, action_rule_set):
                 # print("Not covered by default rule, continuing")
                 continue
@@ -327,7 +327,8 @@ def create_explain_examples_operator(transition_dataset):
             # Create new variables to represent the arguments of a
             variable_name_generator = iter_variable_names()
             # Use them to create a new action substition
-            sigma = dict(zip(variable_name_generator, a.variables))
+            variables = [next(variable_name_generator) for _ in a.variables]
+            sigma = dict(zip(variables, a.variables))
             sigma_inverse = {v : k for k, v in sigma.items()}
             # Set r's action
             new_rule.action = action(*[sigma_inverse[val] for val in a.variables])
@@ -360,7 +361,7 @@ def create_explain_examples_operator(transition_dataset):
                         lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
                         d.append(lifted_lit)
                 # Check if d uniquely refers to c in s
-                assignments_d = find_satisfying_assignments(s, d)
+                assignments_d = find_satisfying_assignments(s, new_rule.preconditions.literals+d)
                 assert len(assignments_d) >= 1
                 # If so, add it to r
                 if len(assignments_d) == 1:
@@ -401,9 +402,7 @@ def create_explain_examples_operator(transition_dataset):
                 for rule in action_rule_set:
                     if rule_covers_transition(rule, t):
                         deprecated_rules.append(rule)
-            new_rule_set = [rule for rule in action_rule_set if rule not in deprecated_rules]
-            new_rule_set.append(new_rule)
-            new_rule_set.append(default_rule)
+            new_rule_set = [new_rule] + [rule for rule in action_rule_set if rule not in deprecated_rules]
             # Recompute the parameters of the default rule
             induce_outcomes(default_rule, transitions_for_action, 
                 rule_is_default=True, action_rule_set=new_rule_set)
