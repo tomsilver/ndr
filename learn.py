@@ -231,17 +231,16 @@ def learn_parameters(rule, covered_transitions, maxiter=100):
             rule.effects[i] = (p, eff)
         return -1. * score_rule(rule, covered_transitions, compute_penalty=False)
     # Set up init x
-    # This led to numerical issues...
-    # x0 = [p for p, _ in rule.effects]
     x0 = [1./len(rule.effects) for _ in rule.effects]
     # Run optimization
     cons = [{'type': 'eq', 'fun' : lambda x: sum(x) - 1. }]
-    for i in range(len(x0)):
-        cons.append({'type': 'ineq', 'fun' : lambda x: x[i] })
-        cons.append({'type': 'ineq', 'fun' : lambda x: 1. - x[i] })
-    result = minimize(loss, x0, method='SLSQP', constraints=tuple(cons),
+    bounds=[(0, 1) for i in range(len(x0))]
+    result = minimize(loss, x0, method='SLSQP', constraints=tuple(cons), bounds=bounds,
         options={'disp' : False, 'maxiter' : maxiter})
-    return result.x
+    params = result.x
+    if any(not (0 <= p <= 1.) for p in params):
+        import ipdb; ipdb.set_trace()
+    return params
 
 
 ## Induce outcomes
