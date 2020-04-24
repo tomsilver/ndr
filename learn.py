@@ -13,24 +13,37 @@ import numpy as np
 def collect_manual_transition_dataset():
     from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
     transitions = defaultdict(list)
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("a")
-    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-        holding("a")}
-    transitions[action.predicate].append((state, action, effects))
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("a")
-    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-        holding("a")}
-    transitions[action.predicate].append((state, action, effects))
+
     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
     action = pickup("b")
     effects = set()
     transitions[action.predicate].append((state, action, effects))
+
+    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+    action = pickup("c")
+    effects = set()
+    transitions[action.predicate].append((state, action, effects))
+
+    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+    action = pickup("a")
+    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
+        holding("a")}
+    transitions[action.predicate].append((state, action, effects))
+
+    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+    action = pickup("a")
+    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
+        holding("a")}
+    transitions[action.predicate].append((state, action, effects))
+
     return transitions
 
 def collect_transition_dataset(num_problems, num_transitions_per_problem, policy=None, seed=0,
                                actions=("pickup", "puton", "putontable")):
+
+    total_count = 0
+    num_no_effects = 0
+
     env = NDRBlocksEnv(seed=seed)
     assert num_problems <= env.num_problems
     if policy is None:
@@ -45,10 +58,18 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
             action = policy(obs)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
-            if action.predicate in actions:
+            total_count += 1
+            keep_transition = (action.predicate in actions)
+            if len(effects) == 0 or noiseoutcome() in effects:
+                num_no_effects += 1
+                if num_no_effects > total_count/2.:
+                    keep_transition = False
+                    num_no_effects -= 1
+            if keep_transition:
                 transition = (obs, action, effects)
                 transitions[action.predicate].append(transition)
             obs = next_obs
+
     return transitions
 
 def construct_effects(obs, next_obs):
@@ -546,9 +567,9 @@ def main():
     max_node_expansions = 10
     search_method = "greedy"
     print("Collecting transition data... ", end='')
-    transition_dataset = collect_manual_transition_dataset()
-    # transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem,
-        # actions=["pickup"])
+    # transition_dataset = collect_manual_transition_dataset()
+    transition_dataset = collect_transition_dataset(num_problems, num_transitions_per_problem,
+        actions=["pickup"])
     print("Transitions:")
     for transition in transition_dataset["pickup"]:
         print_transition(transition)
