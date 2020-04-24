@@ -10,7 +10,8 @@ import heapq as hq
 import numpy as np
 
 
-ALPHA = 100.
+ALPHA = 0.5
+P_MIN = 1e-8
 DEBUG = False
 
 
@@ -45,8 +46,8 @@ def collect_manual_transition_dataset():
 def collect_transition_dataset(num_problems, num_transitions_per_problem, policy=None, seed=0,
                                actions=("pickup", "puton", "putontable")):
 
-    total_count = 0
-    num_no_effects = 0
+    total_counts = {a : 0 for a in actions}
+    num_no_effects = {a : 0 for a in actions}
 
     env = NDRBlocksEnv(seed=seed)
     assert num_problems <= env.num_problems
@@ -64,11 +65,12 @@ def collect_transition_dataset(num_problems, num_transitions_per_problem, policy
             effects = construct_effects(obs, next_obs)
             null_effect = len(effects) == 0 or noiseoutcome() in effects
             keep_transition = (action.predicate in actions) and \
-                (not null_effect or (num_no_effects < total_count/2.+1))
+                (not null_effect or (num_no_effects[action.predicate] < \
+                    total_counts[action.predicate]/2.+1))
             if keep_transition:
-                total_count += 1
+                total_counts[action.predicate] += 1
                 if null_effect:
-                    num_no_effects += 1
+                    num_no_effects[action.predicate] += 1
                 transition = (obs, action, effects)
                 transitions[action.predicate].append(transition)
             obs = next_obs
@@ -97,7 +99,7 @@ def find_assignments_for_ndr(ndr, state, action):
     conds = [ndr.action] + list(ndr.preconditions.literals)
     return find_satisfying_assignments(kb, conds)
 
-def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, alpha=ALPHA):
+def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, alpha=ALPHA):
     # Get per-NDR penalties
     ndr_idx_to_pen = {}
 
@@ -131,7 +133,7 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, a
         # Calculate transition likelihood
         transition_likelihood = 0.
         for prob, outcome in selected_ndr.effects:
-            if outcome == noiseoutcome():
+            if noiseoutcome() in outcome:
                 # c.f. equation 3 in paper
                 transition_likelihood += p_min * prob
             else:
@@ -145,7 +147,7 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=1e-6, a
 
     return score
 
-def score_rule(rule, transitions_for_rule, p_min=1e-6, alpha=ALPHA, compute_penalty=True):
+def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_penalty=True):
     # Calculate penalty for number of literals
     pen = 0
     if compute_penalty:
@@ -168,7 +170,7 @@ def score_rule(rule, transitions_for_rule, p_min=1e-6, alpha=ALPHA, compute_pena
         # Calculate transition likelihood
         transition_likelihood = 0.
         for prob, outcome in rule.effects:
-            if outcome == noiseoutcome():
+            if noiseoutcome() in outcome:
                 # c.f. equation 3 in paper
                 transition_likelihood += p_min * prob
             else:
@@ -197,7 +199,7 @@ def create_default_rule_for_action(action):
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
     return NDR(action=lifted_action, preconditions=LiteralConjunction([]), 
-        effects=[(1.0, noiseoutcome())])
+        effects=[(1.0, {noiseoutcome()})])
 
 def covered_by_default_rule(transition, action_rule_set):
     # default rule is assumed to be last!
@@ -424,8 +426,12 @@ def create_explain_examples_operator(transition_dataset):
                 if not rule_covers_transition(candidate_new_rule, transition):
                     continue
                 induce_outcomes(candidate_new_rule, transitions_for_action)
+                # Recompute the parameters of the default rule
+                induce_outcomes(default_rule, transitions_for_action, 
+                    rule_is_default=True, action_rule_set=[candidate_new_rule, default_rule])
                 score = score_action_rule_set([candidate_new_rule, default_rule], transitions_for_action)
                 if score > best_score:
+                    if DEBUG: import ipdb; ipdb.set_trace()
                     best_score = score
                     new_rule = candidate_new_rule
             if DEBUG: import ipdb; ipdb.set_trace()
@@ -471,6 +477,7 @@ def create_explain_examples_operator(transition_dataset):
                 new_rule_set = {k : v for k, v in rule_set.items() }
                 new_rule_set[action] = new_action_rule_set
                 score = base_score + score_action_rule_set(new_action_rule_set, transitions_for_action)
+                if DEBUG: import ipdb; ipdb.set_trace()
                 # print("New rule set child for explain examples:")
                 # print_rule_set(new_rule_set)
                 yield score, new_rule_set
@@ -571,8 +578,8 @@ def print_transition(transition):
     print("  Effects:", transition[2])
 
 def main():
-    num_problems = 1
-    num_transitions_per_problem = 500
+    num_problems = 3
+    num_transitions_per_problem = 100
     max_node_expansions = 10
     search_method = "greedy"
     print("Collecting transition data... ", end='')

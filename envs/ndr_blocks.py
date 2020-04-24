@@ -29,7 +29,7 @@ noiseoutcome = Predicate("noiseoutcome", 0, [])
 # Actions
 pickup = Predicate("pickup", 1, [block_type])
 puton = Predicate("puton", 1, [block_type])
-putontable = Predicate("putontable", 1, [block_type])
+putontable = Predicate("putontable", 0, [])
 
 
 class NDRBlocksEnv(gym.Env):
@@ -80,8 +80,8 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=pickup("?x"), 
                     preconditions={},
                     effects=[
-                        (0.6, set()),
-                        (0.4, {noiseoutcome()}),
+                        (0.9, set()),
+                        (0.1, {noiseoutcome()}),
                     ],
                 ),
             ],
@@ -112,15 +112,15 @@ class NDRBlocksEnv(gym.Env):
                 NDR(action=puton("?x"), 
                     preconditions={},
                     effects=[
-                        (0.6, set()),
-                        (0.4, {noiseoutcome()}),
+                        (0.9, set()),
+                        (0.1, {noiseoutcome()}),
                     ],
                 ),
             ],
             putontable : [
                 # If you try to putontable and you're holding something,
                 # it will probably succeed
-                NDR(action=putontable("?x"), 
+                NDR(action=putontable(), 
                     preconditions={holding("?x")},
                     effects=[
                         (0.8, {Anti(holding("?x")), ontable("?x"), clear("?x"), handempty()}),
@@ -129,11 +129,11 @@ class NDRBlocksEnv(gym.Env):
                     ],
                 ),
                 # Default rule
-                NDR(action=putontable("?x"), 
+                NDR(action=putontable(), 
                     preconditions={},
                     effects=[
-                        (0.6, set()),
-                        (0.4, {noiseoutcome()}),
+                        (0.9, set()),
+                        (0.1, {noiseoutcome()}),
                     ],
                 ),
             ],
@@ -143,6 +143,9 @@ class NDRBlocksEnv(gym.Env):
         self.problems = [
             ({ on("a", "b"), on("b", "c"), ontable("c"), clear("a"), 
                handempty() },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("a", "b"), ontable("b"), ontable("c"), clear("a"), 
+               clear("c"), handempty() },
                LiteralConjunction([on("c", "a"), on("a", "b")])),
             ({ ontable("a"), ontable("b"), ontable("c"), clear("a"), 
                clear("b"), clear("c"), handempty() },
