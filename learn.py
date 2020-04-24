@@ -410,10 +410,14 @@ def create_explain_examples_operator(transition_dataset):
             for t in transitions_for_action:
                 if not rule_covers_transition(new_rule, t):
                     continue
-                for rule in action_rule_set:
+                # leave out default rule
+                for rule in action_rule_set[:-1]:
+                    # If default, continue
                     if rule_covers_transition(rule, t):
                         deprecated_rules.append(rule)
             new_rule_set = [new_rule] + [rule for rule in action_rule_set if rule not in deprecated_rules]
+            default_rule = create_default_rule_for_action(action)
+            new_rule_set[-1] = default_rule
             # Recompute the parameters of the default rule
             induce_outcomes(default_rule, transitions_for_action, 
                 rule_is_default=True, action_rule_set=new_rule_set)
