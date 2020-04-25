@@ -19,6 +19,7 @@ import pdb
 
 
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
+DEBUG = True
 
 ### First set up an environment that is just the low-level physics
 def inverse_kinematics(body_id, end_effector_id, target_position, target_orientation, joint_indices, physics_client_id=-1):
@@ -177,9 +178,9 @@ class LowLevelPybulletBlocksEnv(gym.Env):
 
         num_piles = self.np_random.randint(1, 4)
         for pile in range(num_piles):
-            num_blocks_in_pile = self.np_random.randint(1, 4)
+            num_blocks_in_pile = 1 #self.np_random.randint(1, 4)
             # Block stack blocks.
-            x, y = 1.5, 0.5 + pile*0.2
+            x, y = 1.25, 0.5 + pile*0.2
             previous_block_top = 0.5
             for i in range(num_blocks_in_pile):
                 block_name = "block{}".format(next(block_name_counter))
@@ -192,9 +193,9 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         return state
 
     def sample_block_static_attributes(self):
-        w, l, h = self.np_random.normal(0.1, 0.01, size=(3,))
+        w, l, h = self.np_random.normal(0.075, 0.005, size=(3,))
         mass = self.np_random.uniform(0.05, 0.2)
-        friction = self.np_random.uniform(0.1, 1.0)
+        friction = 1.
         return w, l, h, mass, friction
 
     def setup(self):
@@ -305,6 +306,7 @@ class LowLevelPybulletBlocksEnv(gym.Env):
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
+        self.action_space.seed(seed)
         return [seed]
 
     def reset(self):
@@ -357,7 +359,7 @@ class LowLevelPybulletBlocksEnv(gym.Env):
 
     def get_state(self):
         gripper_position, gripper_velocity  = p.getLinkState(self.fetch_id, self.ee_id, physicsClientId=self.physics_client_id)[4:6]
-        left_finger_pos = [p.getJointState(self.fetch_id, self.left_finger_id, physicsClientId=self.physics_client_id)[0]]
+        left_finger_pos = p.getJointState(self.fetch_id, self.left_finger_id, physicsClientId=self.physics_client_id)[0]
 
         obs = {
             'gripper' : [gripper_position, gripper_velocity, left_finger_pos],
@@ -410,7 +412,167 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         return rgb_array
 
 
-class PybulletBlocksEnv(LowLevelPybulletBlocksEnv):
-    pass
+
+# Object types
+block_type = Type("block")
+
+# Actions
+pickup = Predicate("pickup", 1, [block_type])
+puton = Predicate("puton", 1, [block_type])
+putontable = Predicate("putontable", 0, [])
+
+# Controllers
+atol = 1e-3
+def get_move_action(gripper_position, target_position, atol=1e-3, gain=10., close_gripper=False):
+    """
+    Move an end effector to a position and orientation.
+    """
+    # Get the currents
+    action = gain * np.subtract(target_position, gripper_position)
+    if close_gripper:
+        gripper_action = -0.1
+    else:
+        gripper_action = 0.
+    action = np.hstack((action, gripper_action))
+
+    return action
+
+def block_is_grasped(left_finger_pos, gripper_position, block_position, relative_grasp_position, atol=1e-3):
+    block_inside = block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol)
+    grippers_closed = grippers_are_closed(left_finger_pos, atol=atol)
+    if DEBUG: print("grippers_closed?", grippers_closed)
+    return block_inside and grippers_closed
+
+def block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=1e-3):
+    relative_position = np.subtract(gripper_position, block_position)
+    return np.sum(np.subtract(relative_position, relative_grasp_position)**2) < atol
+
+def grippers_are_closed(left_finger_pos, atol=1e-3):
+    return abs(left_finger_pos) - 0.035 <= atol
+
+def grippers_are_open(left_finger_pos, atol=1e-3):
+    return abs(left_finger_pos - 0.05) <= atol
+
+def pickup_controller(objects, obs, atol=atol):
+    assert len(objects) == 1
+    block_name = objects[0].name
+
+    gripper_position, _, left_finger_pos = obs['gripper']
+    block_position = obs['blocks'][block_name][3:6]
+
+    pick_height = 0.5
+    relative_grasp_position = np.array([0., 0., 0.])
+    target_position = block_position.copy()
+    target_position[2] = pick_height
+    workspace_height = 0.1
+
+    # import ipdb; ipdb.set_trace()
+
+    # Done
+    if block_position[2] >= pick_height:
+        if DEBUG: print("Done")
+        return np.array([0., 0., 0., -0.01]), True
+
+    # Bring up to pick position
+    if block_is_grasped(left_finger_pos, gripper_position, block_position, 
+        relative_grasp_position=relative_grasp_position, atol=atol):
+        if DEBUG: print("Bring up to pick position")
+        return np.array([0., 0., np.sign(pick_height-block_position[2]), -0.01]), False
+
+    # If the block is ready to be grasped
+    if block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol):
+        # Close the grippers
+        if DEBUG: print("Close the grippers")
+        return np.array([0., 0., 0., -1.]), False
+
+    # If the gripper is above the block
+    target_position = np.add(block_position, relative_grasp_position)    
+    if (gripper_position[0] - target_position[0])**2 + (gripper_position[1] - target_position[1])**2 < atol:
+
+        # If the grippers are closed, open them
+        if not grippers_are_open(left_finger_pos, atol=atol):
+            if DEBUG: print("The grippers are closed, open them")
+            return np.array([0., 0., 0., 1.]), False
+
+        # Move down to grasp
+        if DEBUG: print("Move down to grasp")
+        return get_move_action(gripper_position, target_position, atol=atol), False
+
+    # Else move the gripper to above the block
+    target_position[2] += workspace_height
+    if DEBUG: print("Move the gripper to above the block")
+    return get_move_action(gripper_position, target_position, atol=atol), False
+
+def puton_controller(objects, state):
+    return np.zeros(4), True
+
+def putontable_controller(objects, state):
+    return np.zeros(4), True
+
+controllers = {
+    pickup : pickup_controller,
+    puton : puton_controller,
+    putontable : putontable_controller,
+}
+
+# State predicates
+on = Predicate("on", 2, [block_type, block_type])
+ontable = Predicate("ontable", 1, [block_type])
+holding = Predicate("holding", 1, [block_type])
+clear = Predicate("clear", 1, [block_type])
+handempty = Predicate("handempty", 0, [])
+observation_predicates = [on, ontable, holding, clear, handempty]
+
+def get_observation(state):
+    obs = set()
+    for block_name in state["blocks"]:
+        obs.add(ontable(block_name))
+    return obs
+
+# TODO move this somewhere else, it is general
+def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, obs_preds,
+                                 controller_max_steps=100):
+
+    class AbstractPybulletEnv(gym.Env):
+        low_level_env = low_level_cls()
+        action_predicates = list(controllers.keys())
+        observation_predicates = obs_preds
+
+        def __init__(self):
+            self.action_space = LiteralSpace(self.action_predicates)
+            self.observation_space = LiteralSetSpace(set(self.observation_predicates))
+
+        def reset(self):
+            low_level_obs, debug_info = self.low_level_env.reset()
+            obs = get_observation(low_level_obs)
+            self._previous_low_level_obs = low_level_obs
+            self._problem_objects = sorted({ v for lit in obs for v in lit.variables })
+            self.action_space.update(self._problem_objects)
+            return obs, debug_info
+
+        def step(self, action):
+            controller = controllers[action.predicate]
+            low_level_obs = self._previous_low_level_obs
+            reward = 0.
+            done = False
+            for _ in range(controller_max_steps):
+                control, controller_done = controller(action.variables, low_level_obs)
+                if controller_done:
+                    break
+                low_level_obs, low_level_reward, done, debug_info = self.low_level_env.step(control)
+                reward += low_level_reward
+                if done:
+                    break
+            obs = get_observation(low_level_obs)
+            self._previous_low_level_obs = low_level_obs 
+            return obs, reward, done, {}
+
+        def render(self, *args, **kwargs):
+            return self.low_level_env.render(*args, **kwargs)
+
+    return AbstractPybulletEnv
+
+PybulletBlocksEnv = create_abstract_pybullet_env(LowLevelPybulletBlocksEnv, controllers, 
+    get_observation, observation_predicates)
 
 
