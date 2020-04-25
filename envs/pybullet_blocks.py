@@ -521,12 +521,40 @@ class PickupController(StateMachineController):
         open_grippers,
         move_down,
         close_grippers,
+        close_grippers,
         bring_to_pick_position,
     ]
 
 
 class PutonController(StateMachineController):
-    stages = []
+    def move_to_above_block(objects, obs):
+        block_name = objects[0].name
+        gripper_position, _, left_finger_pos = obs['gripper']
+        block_position = obs['blocks'][block_name][3:6]
+        target_position = block_position.copy()
+        target_position[2] += 0.15
+        if np.sum(np.subtract(target_position, gripper_position)**2) < atol:
+            return np.array([0., 0., 0., -0.005]), True
+        move_action = get_move_action(gripper_position, target_position, atol=atol)
+        move_action = np.array(move_action)
+        move_action[3] = -0.005
+        return move_action, False
+
+    def open_grippers(objects, obs):
+        return np.array([0., 0., 0., 1.]), True
+
+    def move_up(objects, obs):
+        return np.array([0., 0., 1., 0.]), True
+
+    stages = [
+        move_to_above_block,
+        open_grippers,
+        move_up,
+        move_up,
+        move_up,
+        move_up,
+        move_up,
+    ]
 
 class PutontableController(StateMachineController):
     stages = []
