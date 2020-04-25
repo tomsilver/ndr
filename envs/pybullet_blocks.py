@@ -574,7 +574,7 @@ class PutontableController(StateMachineController):
 
     def find_open_position(obs):
         x = 1.25
-        z = 0.3
+        z = 0.15
         min_y, max_y = 0.5, 0.5 + 0.4
         block_ys = []
         for block_state in obs['blocks'].values():
