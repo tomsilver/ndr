@@ -16,7 +16,6 @@ import pybullet as p
 
 import glob
 import os
-import pdb
 
 
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -177,7 +176,7 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         # For now, constant orientation (quaternion) for all blocks.
         orn_x, orn_y, orn_z, orn_w = 0., 0., 0., 1.
 
-        num_piles = self.np_random.randint(1, 4)
+        num_piles = 3 #self.np_random.randint(1, 4)
         for pile in range(num_piles):
             num_blocks_in_pile = 1 #self.np_random.randint(1, 4)
             # Block stack blocks.
@@ -196,7 +195,7 @@ class LowLevelPybulletBlocksEnv(gym.Env):
     def sample_block_static_attributes(self):
         w, l, h = 0.075, 0.075, 0.075
         mass = 0.05
-        friction = 1.
+        friction = 1.2
         # w, l, h = self.np_random.normal(0.075, 0.005, size=(3,))
         # mass = self.np_random.uniform(0.05, 0.05)
         # friction = 1.
@@ -426,13 +425,17 @@ puton = Predicate("puton", 1, [block_type])
 putontable = Predicate("putontable", 0, [])
 
 # Controllers
-atol = 1e-3
-def get_move_action(gripper_position, target_position, atol=1e-3, gain=5., close_gripper=False):
+atol = 1e-4
+def get_move_action(gripper_position, target_position, atol=1e-3, gain=5, max_vel_norm=1, close_gripper=False):
     """
     Move an end effector to a position and orientation.
     """
     # Get the currents
     action = gain * np.subtract(target_position, gripper_position)
+    action_norm = np.linalg.norm(action)
+    if action_norm > max_vel_norm:
+        action = action * max_vel_norm / action_norm
+
     if close_gripper:
         gripper_action = -0.1
     else:
@@ -443,6 +446,7 @@ def get_move_action(gripper_position, target_position, atol=1e-3, gain=5., close
 
 def block_is_grasped(left_finger_pos, gripper_position, block_position, relative_grasp_position, atol=1e-3):
     block_inside = block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol)
+    if DEBUG: print("block inside?", block_inside)
     grippers_closed = grippers_are_closed(left_finger_pos, atol=atol)
     if DEBUG: print("grippers_closed?", grippers_closed)
     return block_inside and grippers_closed
@@ -452,71 +456,168 @@ def block_inside_grippers(gripper_position, block_position, relative_grasp_posit
     return np.sum(np.subtract(relative_position, relative_grasp_position)**2) < atol
 
 def grippers_are_closed(left_finger_pos, atol=1e-3):
-    return abs(left_finger_pos) - 0.04 <= atol
+    return abs(left_finger_pos) - 0.02 <= atol
 
 def grippers_are_open(left_finger_pos, atol=1e-3):
     return abs(left_finger_pos - 0.05) <= atol
 
-def pickup_controller(objects, obs, atol=atol):
-    assert len(objects) == 1
-    block_name = objects[0].name
 
-    gripper_position, _, left_finger_pos = obs['gripper']
-    block_position = obs['blocks'][block_name][3:6]
+class StateMachineController:
+    stage = 0
 
-    pick_height = 0.5
-    relative_grasp_position = np.array([0., 0., 0.])
-    target_position = block_position.copy()
-    target_position[2] = pick_height
-    workspace_height = 0.1
+    def reset(self):
+        self.stage = 0
 
-    # import ipdb; ipdb.set_trace()
+    def step(self, objects, obs):
+        if self.stage > len(self.stages)-1:
+            return None, True
+        action, stage_done = self.stages[self.stage](objects, obs)
+        if stage_done:
+            self.stage += 1
+        return action, self.stage > len(self.stages)-1
 
-    # Done
-    if block_position[2] >= pick_height:
-        if DEBUG: print("Done")
-        return np.array([0., 0., 0., -0.01]), True
 
-    # Bring up to pick position
-    if block_is_grasped(left_finger_pos, gripper_position, block_position, 
-        relative_grasp_position=relative_grasp_position, atol=atol):
-        if DEBUG: print("Bring up to pick position")
-        return np.array([0., 0., np.sign(pick_height-block_position[2]), -0.01]), False
 
-    # If the block is ready to be grasped
-    if block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol):
-        # Close the grippers
-        if DEBUG: print("Close the grippers")
-        return np.array([0., 0., 0., -0.5]), False
+class PickupController(StateMachineController):
 
-    # If the gripper is above the block
-    target_position = np.add(block_position, relative_grasp_position)    
-    if (gripper_position[0] - target_position[0])**2 + (gripper_position[1] - target_position[1])**2 < atol:
-
-        # If the grippers are closed, open them
-        if not grippers_are_open(left_finger_pos, atol=atol):
-            if DEBUG: print("The grippers are closed, open them")
-            return np.array([0., 0., 0., 0.5]), False
-
-        # Move down to grasp
-        if DEBUG: print("Move down to grasp")
+    def move_to_above_block(objects, obs):
+        relative_grasp_position = np.array([0., 0., 0.])
+        block_name = objects[0].name
+        gripper_position, _, left_finger_pos = obs['gripper']
+        block_position = obs['blocks'][block_name][3:6]
+        target_position = np.add(block_position, relative_grasp_position)
+        target_position[2] += 0.15
+        if (gripper_position[0] - target_position[0])**2 + (gripper_position[1] - target_position[1])**2 < atol:
+            return np.zeros(4), True
         return get_move_action(gripper_position, target_position, atol=atol), False
 
-    # Else move the gripper to above the block
-    target_position[2] += workspace_height
-    if DEBUG: print("Move the gripper to above the block")
-    return get_move_action(gripper_position, target_position, atol=atol), False
+    def open_grippers(objects, obs):
+        return np.array([0., 0., 0., 1.]), True
 
-def puton_controller(objects, state):
-    return np.zeros(4), True
+    def move_down(objects, obs):
+        relative_grasp_position = np.array([0., 0., 0.])
+        block_name = objects[0].name
+        gripper_position, _, left_finger_pos = obs['gripper']
+        block_position = obs['blocks'][block_name][3:6]
+        target_position = np.add(block_position, relative_grasp_position) 
+        done = ((gripper_position[2] - target_position[2])**2 < atol)
+        return np.array([0., 0., -0.25, 0.]), done
 
-def putontable_controller(objects, state):
-    return np.zeros(4), True
+    def close_grippers(objects, obs):
+        return np.array([0., 0., 0., -0.25]), True
+
+    def bring_to_pick_position(objects, obs):
+        pick_height = 0.5
+        relative_grasp_position = np.array([0., 0., 0.])
+        block_name = objects[0].name
+        gripper_position, _, left_finger_pos = obs['gripper']
+        block_position = obs['blocks'][block_name][3:6]
+        target_position = np.add(block_position, relative_grasp_position)    
+        done = (gripper_position[2] > pick_height)
+        return np.array([0., 0., 0.5, -0.005]), done
+
+    stages = [
+        move_to_above_block,
+        open_grippers,
+        move_down,
+        close_grippers,
+        bring_to_pick_position,
+    ]
+
+
+class PutonController(StateMachineController):
+    stages = []
+
+class PutontableController(StateMachineController):
+    stages = []
+
+
+# def pickup_controller(objects, obs, atol=atol):
+#     assert len(objects) == 1
+#     block_name = objects[0].name
+
+#     gripper_position, _, left_finger_pos = obs['gripper']
+#     block_position = obs['blocks'][block_name][3:6]
+
+#     pick_height = 0.5
+#     relative_grasp_position = np.array([0., 0., 0.])
+#     target_position = block_position.copy()
+#     target_position[2] = pick_height
+#     workspace_height = 0.1
+
+#     # import ipdb; ipdb.set_trace()
+
+#     # Done
+#     if block_position[2] >= pick_height:
+#         if DEBUG: print("Done")
+#         return np.array([0., 0., 0., 0.]), True
+
+#     # Bring up to pick position
+#     if block_is_grasped(left_finger_pos, gripper_position, block_position, 
+#         relative_grasp_position=relative_grasp_position, atol=atol):
+#         if DEBUG: print("Bring up to pick position")
+#         return np.array([0., 0., np.sign(pick_height-block_position[2]), 0.]), False
+
+#     # If the block is ready to be grasped
+#     if block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol):
+#         # Close the grippers
+#         if DEBUG: print("Close the grippers")
+#         return np.array([0., 0., 0., -0.25]), False
+
+#     # If the gripper is above the block
+#     target_position = np.add(block_position, relative_grasp_position)    
+#     if (gripper_position[0] - target_position[0])**2 + (gripper_position[1] - target_position[1])**2 < atol:
+
+#         # If the grippers are closed, open them
+#         if not grippers_are_open(left_finger_pos, atol=atol):
+#             if DEBUG: print("The grippers are closed, open them")
+#             return np.array([0., 0., 0., 1.]), False
+
+#         # Move down to grasp
+#         if DEBUG: print("Move down to grasp")
+#         return get_move_action(gripper_position, target_position, atol=atol), False
+
+#     # Else move the gripper to above the block
+#     target_position[2] += workspace_height
+#     if DEBUG: print("Move the gripper to above the block")
+#     return get_move_action(gripper_position, target_position, atol=atol), False
+
+# def puton_controller(objects, obs, atol=atol):
+#     assert len(objects) == 1
+#     block_name = objects[0].name
+
+#     gripper_position, _, left_finger_pos = obs['gripper']
+#     block_position = obs['blocks'][block_name][3:6]
+
+#     relative_grasp_position = np.array([0., 0., 0.])
+#     target_position = block_position.copy()
+#     target_position[2] += 0.15
+
+#     # import ipdb; ipdb.set_trace()
+
+#     # The gripper is at the drop location
+#     if np.sum(np.subtract(gripper_position, target_position)**2) < atol:
+
+#         # The grippers are open, done
+#         if grippers_are_open(left_finger_pos, atol=atol):
+#             if DEBUG: print("The grippers are open, done")
+#             return np.array([0., 0., 0., 0.]), True
+
+#         # Open the grippers
+#         if DEBUG: print("The grippers are closed, open them and move up")
+#         return np.array([0., 0., 1., 0.5]), False
+
+#     # Move the gripper to the drop location
+#     if DEBUG: print("Move the gripper to above the block")
+#     return get_move_action(gripper_position, target_position, atol=atol), False
+
+# def putontable_controller(objects, state):
+#     return np.zeros(4), True
 
 controllers = {
-    pickup : pickup_controller,
-    puton : puton_controller,
-    putontable : putontable_controller,
+    pickup : PickupController(),
+    puton : PutonController(),
+    putontable : PutontableController(),
 }
 
 # State predicates
@@ -560,11 +661,12 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
 
         def step(self, action):
             controller = controllers[action.predicate]
+            controller.reset()
             low_level_obs = self._previous_low_level_obs
             reward = 0.
             done = False
             for _ in range(controller_max_steps):
-                control, controller_done = controller(action.variables, low_level_obs)
+                control, controller_done = controller.step(action.variables, low_level_obs)
                 if controller_done:
                     break
                 low_level_obs, low_level_reward, done, debug_info = self.low_level_env.step(control)
@@ -580,6 +682,9 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
 
         def close(self):
             return self.low_level_env.close()
+
+        def seed(self, seed=None):
+            return self.low_level_env.seed(seed=seed)
 
     return AbstractPybulletEnv
 

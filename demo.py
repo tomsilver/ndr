@@ -21,7 +21,9 @@ def run_all(render=True, verbose=True):
     # plan = [pickup("A"), puton("B"), pickup("C"), puton("A")]
     # run_plan(env, plan, verbose=verbose, render=render)
     env = PybulletBlocksEnv()
-    run_random_agent_demo(env, verbose=verbose, seed=0, render=render)
+    # run_random_agent_demo(env, verbose=verbose, seed=0, render=render)
+    plan = [pickup("block1"), puton("block2"), pickup("block0"), puton("block1")]
+    run_plan(env, plan, verbose=verbose, render=render)
 
 
 if __name__ == '__main__':
