@@ -4,6 +4,7 @@ Based on the environment described in ZPK.
 """
 from ndr.structs import Predicate, LiteralConjunction, Type, Anti
 from .spaces import LiteralSpace, LiteralSetSpace
+from ndr.utils import VideoWrapper
 
 from gym import utils, spaces
 from gym.utils import seeding
@@ -193,9 +194,12 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         return state
 
     def sample_block_static_attributes(self):
-        w, l, h = self.np_random.normal(0.075, 0.005, size=(3,))
-        mass = self.np_random.uniform(0.05, 0.2)
+        w, l, h = 0.075, 0.075, 0.075
+        mass = 0.05
         friction = 1.
+        # w, l, h = self.np_random.normal(0.075, 0.005, size=(3,))
+        # mass = self.np_random.uniform(0.05, 0.05)
+        # friction = 1.
         return w, l, h, mass, friction
 
     def setup(self):
@@ -423,7 +427,7 @@ putontable = Predicate("putontable", 0, [])
 
 # Controllers
 atol = 1e-3
-def get_move_action(gripper_position, target_position, atol=1e-3, gain=10., close_gripper=False):
+def get_move_action(gripper_position, target_position, atol=1e-3, gain=5., close_gripper=False):
     """
     Move an end effector to a position and orientation.
     """
@@ -448,7 +452,7 @@ def block_inside_grippers(gripper_position, block_position, relative_grasp_posit
     return np.sum(np.subtract(relative_position, relative_grasp_position)**2) < atol
 
 def grippers_are_closed(left_finger_pos, atol=1e-3):
-    return abs(left_finger_pos) - 0.035 <= atol
+    return abs(left_finger_pos) - 0.04 <= atol
 
 def grippers_are_open(left_finger_pos, atol=1e-3):
     return abs(left_finger_pos - 0.05) <= atol
@@ -483,7 +487,7 @@ def pickup_controller(objects, obs, atol=atol):
     if block_inside_grippers(gripper_position, block_position, relative_grasp_position, atol=atol):
         # Close the grippers
         if DEBUG: print("Close the grippers")
-        return np.array([0., 0., 0., -1.]), False
+        return np.array([0., 0., 0., -0.5]), False
 
     # If the gripper is above the block
     target_position = np.add(block_position, relative_grasp_position)    
@@ -492,7 +496,7 @@ def pickup_controller(objects, obs, atol=atol):
         # If the grippers are closed, open them
         if not grippers_are_open(left_finger_pos, atol=atol):
             if DEBUG: print("The grippers are closed, open them")
-            return np.array([0., 0., 0., 1.]), False
+            return np.array([0., 0., 0., 0.5]), False
 
         # Move down to grasp
         if DEBUG: print("Move down to grasp")
@@ -531,7 +535,8 @@ def get_observation(state):
 
 # TODO move this somewhere else, it is general
 def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, obs_preds,
-                                 controller_max_steps=100):
+                                 controller_max_steps=100, record_low_level_video=False,
+                                 video_out=None):
 
     class AbstractPybulletEnv(gym.Env):
         low_level_env = low_level_cls()
@@ -541,6 +546,9 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
         def __init__(self):
             self.action_space = LiteralSpace(self.action_predicates)
             self.observation_space = LiteralSetSpace(set(self.observation_predicates))
+
+            if record_low_level_video:
+                self.low_level_env = VideoWrapper(self.low_level_env, video_out)
 
         def reset(self):
             low_level_obs, debug_info = self.low_level_env.reset()
@@ -570,9 +578,12 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
         def render(self, *args, **kwargs):
             return self.low_level_env.render(*args, **kwargs)
 
+        def close(self):
+            return self.low_level_env.close()
+
     return AbstractPybulletEnv
 
 PybulletBlocksEnv = create_abstract_pybullet_env(LowLevelPybulletBlocksEnv, controllers, 
-    get_observation, observation_predicates)
+    get_observation, observation_predicates, record_low_level_video=True, video_out='/tmp/lowlevel.mp4')
 
 
