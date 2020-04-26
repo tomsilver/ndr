@@ -39,7 +39,8 @@ def run_random_agent_demo(env, outdir='/tmp', max_num_steps=10, fps=3,
             print("Act:", action)
 
         obs, reward, done, _ = env.step(action)
-        env.render()
+        if render:
+            env.render()
         if verbose:
             print("Rew:", reward)
 
@@ -74,7 +75,8 @@ def run_plan(env, plan, verbose=False, check_reward=True, render=True, outdir='/
             print("Act:", action)
 
         obs, reward, done, _ = env.step(action)
-        env.render()
+        if render:
+            env.render()
         tot_reward += reward
         if verbose:
             print("Rew:", reward)
@@ -113,7 +115,8 @@ def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, 
             print("Act:", action)
 
         obs, reward, done, _ = env.step(action)
-        env.render()
+        if render:
+            env.render()
         tot_reward += reward
         if verbose:
             print("Rew:", reward)

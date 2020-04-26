@@ -154,6 +154,9 @@ class NDRBlocksEnv(gym.Env):
         self.num_problems = len(self.problems)
         self._problem_idx = None
 
+    def seed(self, seed):
+        self._rng = np.random.RandomState(seed)
+
     def reset(self):
         self._problem_idx = self._rng.choice(self.num_problems)
         self._state, self._goal = self.problems[self._problem_idx]

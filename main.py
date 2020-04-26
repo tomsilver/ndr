@@ -4,10 +4,13 @@ from ndr.structs import Anti
 from envs.ndr_blocks import NDRBlocksEnv, noiseoutcome
 from envs.pybullet_blocks import PybulletBlocksEnv
 from ndr.learn import run_main_search
+from ndr.planning import find_policy
+from ndr.utils import run_policy
 from collections import defaultdict
 from termcolor import colored
 import pickle
 import os
+import numpy as np
 
 
 def collect_training_data(env, outfile):
@@ -101,10 +104,31 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
+def run_test_suite(test_env_cls, test_outfile, num_problems=10, seed_start=10000,
+                   num_trials_per_problem=1, render=True, verbose=False):
+    all_returns = []
+    for seed in range(seed_start, seed_start+num_problems):
+        seed_returns = []
+        for trial in range(num_trials_per_problem):
+            env = test_env_cls()
+            env.seed(seed)
+            initial_state, debug_info = env.reset()
+            goal = debug_info["goal"]
+            policy = find_policy("ff_replan", initial_state, goal, env.operators, env.action_space, env.observation_space)
+            total_returns = 0
+            outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)
+            if render:
+                os.makedirs(outdir, exist_ok=True)
+            returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
+                outdir=outdir)
+            seed_returns.append(returns)
+        all_returns.append(seed_returns)
+    print("Average returns:", np.mean(all_returns))
+    return all_returns
+
 
 def main():
     seed = 0
-    test_seed = 1
 
     training_env = NDRBlocksEnv()
     training_env.seed(seed)
@@ -114,13 +138,12 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    # test_env = PybulletBlocksEnv()
-    # test_env.seed(test_seed)
-    # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    # test_results = run_test_suite(test_env, test_outfile)
-    # plot_test_results(test_results)
+    test_env_cls = NDRBlocksEnv
+    test_outfile = "data/{}_test_results.pkl".format(test_env_cls.__name__)
+    test_results = run_test_suite(test_env_cls, test_outfile, render=False)
 
-    pass
+    print("Test results:")
+    print(test_results)
 
 
 if __name__ == "__main__":
