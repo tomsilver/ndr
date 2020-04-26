@@ -19,7 +19,7 @@ import os
 
 
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
-DEBUG = True
+DEBUG = False
 
 ### First set up an environment that is just the low-level physics
 def inverse_kinematics(body_id, end_effector_id, target_position, target_orientation, joint_indices, physics_client_id=-1):
@@ -180,12 +180,12 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         num_blocks = 0
         num_piles = self.np_random.randint(1, 4)
         for pile in range(num_piles):
+            if num_blocks == total_num_blocks:
+                break
             if pile == num_piles-1:
                 num_blocks_in_pile = total_num_blocks - num_blocks
             else:
-                num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks)
-            if num_blocks == total_num_blocks:
-                break
+                num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
             num_blocks += num_blocks_in_pile
             # Block stack blocks.
             x, y = 1.25, 0.5 + pile*0.2
@@ -524,6 +524,9 @@ class PickupController(StateMachineController):
         done = (gripper_position[2] > pick_height)
         return np.array([0., 0., 0.5, -0.005]), done
 
+    def pause(objects, obs):
+        return np.array([0., 0., 0.5, -0.005]), True
+
     stages = [
         move_to_above_block,
         open_grippers,
@@ -531,6 +534,11 @@ class PickupController(StateMachineController):
         close_grippers,
         close_grippers,
         bring_to_pick_position,
+        pause,
+        pause,
+        pause,
+        pause,
+        pause
     ]
 
 
@@ -640,9 +648,53 @@ handempty = Predicate("handempty", 0, [])
 observation_predicates = [on, ontable, holding, clear, handempty]
 
 def get_observation(state):
-    obs = set()
+    # First check whether we're holding a block
+    holding_block = None
+
+    gripper_position, _, _ = state['gripper']
     for block_name in state["blocks"]:
-        obs.add(ontable(block_name))
+        block_position = state['blocks'][block_name][3:6]
+        if np.sum(np.subtract(gripper_position, block_position)**2) < 1e-2:
+            holding_block = block_name
+            break
+
+    # Find which blocks are vertically aligned, indicating a pile,
+    piles = []
+
+    for block_name, block_state in state["blocks"].items():
+        if block_name == holding_block:
+            continue
+        x, y, z = block_state[3:6]
+        contender_pile = None
+        best_pile_dist = np.inf
+        for pile in piles:
+            base_x, base_y = state["blocks"][pile[0]][3:5]
+            contender_pile_dist = abs(x - base_x) + abs(y - base_y)
+            if contender_pile_dist < 1e-2 and contender_pile_dist < best_pile_dist:
+                contender_pile = pile
+                best_pile_dist = contender_pile_dist
+        if contender_pile is None:
+            piles.append([block_name])
+        else:
+            contender_pile.append(block_name)
+            # sort in increasing height order
+            contender_pile.sort(key=lambda s : state["blocks"][s][5])
+
+    # Build predicates
+    obs = set()
+
+    if holding_block is not None:
+        obs.add(holding(holding_block))
+    else:
+        obs.add(handempty())
+
+    for pile in piles:
+        obs.add(ontable(pile[0]))
+        obs.add(clear(pile[-1]))
+        if len(pile) > 1:
+            for below, above in zip(pile[:-1], pile[1:]):
+                obs.add(on(above, below))
+
     return obs
 
 # TODO move this somewhere else, it is general
