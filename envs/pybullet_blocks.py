@@ -180,12 +180,16 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         num_blocks = 0
         num_piles = self.np_random.randint(1, 4)
         for pile in range(num_piles):
-            if num_blocks == total_num_blocks:
-                break
             if pile == num_piles-1:
                 num_blocks_in_pile = total_num_blocks - num_blocks
             else:
-                num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
+                num_blocks_in_pile = 1
+            # if num_blocks == total_num_blocks:
+            #     break
+            # if pile == num_piles-1:
+            #     num_blocks_in_pile = total_num_blocks - num_blocks
+            # else:
+            #     num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
             num_blocks += num_blocks_in_pile
             # Block stack blocks.
             x, y = 1.25, 0.5 + pile*0.2
@@ -249,18 +253,19 @@ class LowLevelPybulletBlocksEnv(gym.Env):
             p.stepSimulation(physicsClientId=self.physics_client_id)
 
         # Move the arm to a good start location
-        joint_values = inverse_kinematics(self.fetch_id, self.ee_id, [1., 0.5, 0.5], self.ee_orientation, self.arm_joints, 
-            physics_client_id=self.physics_client_id)
+        self._initial_joint_values = inverse_kinematics(self.fetch_id, self.ee_id, [1., 0.5, 0.5], self.ee_orientation, 
+            self.arm_joints, physics_client_id=self.physics_client_id)
 
         # Set arm joint motors
-        for joint_idx, joint_val in zip(self.arm_joints, joint_values):
+        for joint_idx, joint_val in zip(self.arm_joints, self._initial_joint_values):
             p.resetJointState(self.fetch_id, joint_idx, joint_val, physicsClientId=self.physics_client_id)
 
         for _ in range(100):
             p.stepSimulation(physicsClientId=self.physics_client_id)
 
         # Record the initial state so we can reset to it later
-        self.initial_state_id = p.saveState(physicsClientId=self.physics_client_id)
+        # this doesn't seem to work
+        # self.initial_state_id = p.saveState(physicsClientId=self.physics_client_id)
 
         self.action_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
 
@@ -324,8 +329,10 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         for block_id in self.block_ids.values():
             p.removeBody(block_id, physicsClientId=self.physics_client_id)
 
-        p.restoreState(stateId=self.initial_state_id, physicsClientId=self.physics_client_id)
-        p.resetBasePositionAndOrientation(self.fetch_id, self.base_position, self.base_orientation, physicsClientId=self.physics_client_id)
+        # Make sure the robot gets out of the way
+        self.block_ids = {}
+        for _ in range(10):
+            self.step(np.array([-0.5, -0.5, 0.5, 0.0]))
 
         initial_state = self.sample_initial_state()
         self.set_state(initial_state)
@@ -477,6 +484,8 @@ class StateMachineController:
         self.stage = 0
 
     def step(self, objects, obs):
+        if self.stage == 0 and self.terminate_early(objects, obs):
+            return None, True
         if self.stage > len(self.stages)-1:
             return None, True
         action, stage_done = self.stages[self.stage](objects, obs)
@@ -484,9 +493,23 @@ class StateMachineController:
             self.stage += 1
         return action, self.stage > len(self.stages)-1
 
+    def terminate_early(self, objects, obs):
+        return False
+
 
 
 class PickupController(StateMachineController):
+
+    # This makes learning a lot easier...
+    def terminate_early(self, objects, obs):
+        # Check if the object is clear
+        block_name = objects[0].name
+        # Could recompute, but am lazy
+        pred_obs = get_observation(obs)
+        if clear(block_name) not in pred_obs and \
+            holding(block_name) not in pred_obs:
+            return True
+        return False
 
     def move_to_above_block(objects, obs):
         relative_grasp_position = np.array([0., 0., 0.])
@@ -543,6 +566,15 @@ class PickupController(StateMachineController):
 
 
 class PutonController(StateMachineController):
+    # This makes learning a lot easier...
+    def terminate_early(self, objects, obs):
+        # Check if the object is clear
+        block_name = objects[0].name
+        # Could recompute, but am lazy
+        if clear(block_name) not in get_observation(obs):
+            return True
+        return False
+
     def move_to_above_block(objects, obs):
         block_name = objects[0].name
         gripper_position, _, left_finger_pos = obs['gripper']
@@ -575,6 +607,13 @@ class PutonController(StateMachineController):
 class PutontableController(StateMachineController):
     stages = []
     open_position = None
+
+    # This makes learning a lot easier...
+    def terminate_early(self, objects, obs):
+        # Could recompute, but am lazy
+        if handempty() in get_observation(obs):
+            return True
+        return False
 
     def reset(self):
         PutontableController.open_position = None
@@ -659,7 +698,7 @@ def get_observation(state):
     gripper_position, _, _ = state['gripper']
     for block_name in state["blocks"]:
         block_position = state['blocks'][block_name][3:6]
-        if np.sum(np.subtract(gripper_position, block_position)**2) < 1e-2:
+        if np.sum(np.subtract(gripper_position, block_position)**2) < 1e-3:
             holding_block = block_name
             break
 

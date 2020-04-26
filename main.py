@@ -13,7 +13,7 @@ import os
 import numpy as np
 
 
-def collect_training_data(env, outfile, verbose=False):
+def collect_training_data(env, outfile, verbose=False, actions="all"):
     """Load or generate training data
     """
     if os.path.exists(outfile):
@@ -24,7 +24,8 @@ def collect_training_data(env, outfile, verbose=False):
             len(transition_dataset)))
     else:
         print("Collecting transition data... ", end='')
-        transition_dataset = collect_transition_dataset(env, verbose=verbose)
+        transition_dataset = collect_transition_dataset(env, verbose=verbose, 
+            actions=actions)
         num_transitions = sum(len(v) for v in transition_dataset.values())
         print("collected {} transitions for {} actions.".format(num_transitions, 
             len(transition_dataset)))
@@ -33,34 +34,42 @@ def collect_training_data(env, outfile, verbose=False):
         print("Dumped dataset to {}.".format(outfile))
     return transition_dataset
 
-def collect_transition_dataset(env, num_trials=100, num_transitions_per_problem=10, 
-                               policy=None, actions="all", verbose=False):
+def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_problem=5,
+                               max_transitions_per_action=500, policy=None, actions="all", verbose=False):
     """Collect transitions (state, action, effect) for the given actions
     Make sure that no more than 50% of outcomes per action are null.
     """
-    total_counts = defaultdict(int)
-    num_no_effects = defaultdict(int)
+    if actions == "all":
+        actions = env.action_predicates
+
+    total_counts = { a : 0 for a in actions }
+    num_no_effects = { a : 0 for a in actions }
 
     if policy is None:
         policy = lambda s : env.action_space.sample()
     transitions = defaultdict(list)
-    for trial in range(num_trials):
+    for trial in range(max_num_trials):
+        if all(c >= max_transitions_per_action for c in total_counts.values()):
+            break
         if verbose:
-            print("\nCollecting data trial {}/{}".format(trial, num_trials))
+            print("\nCollecting data trial {}".format(trial))
         done = True
         for transition_num in range(num_transitions_per_problem):
             if verbose:
-                print("Collecting transition {}/{}".format(transition_num, num_transitions_per_problem),
-                    end='\r')
+                # print("Transition {}/{}".format(transition_num, num_transitions_per_problem))
+                print("total counts:", total_counts)
+                print("num_no_effects:", num_no_effects)
             if done:
                 obs, _ = env.reset()
             action = policy(obs)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
+            print_transition((obs, action, effects))
             null_effect = len(effects) == 0 or noiseoutcome() in effects
             keep_transition = (actions == "all" or action.predicate in actions) and \
                 (not null_effect or (num_no_effects[action.predicate] < \
-                    total_counts[action.predicate]/2.+1))
+                    total_counts[action.predicate]/2.+1)) and \
+                 total_counts[action.predicate] < max_transitions_per_action
             if keep_transition:
                 total_counts[action.predicate] += 1
                 if null_effect:
@@ -83,6 +92,19 @@ def construct_effects(obs, next_obs):
     for lit in obs - next_obs:
         effects.add(Anti(lit))
     return effects
+
+def print_transition(transition):
+    print("  State:", transition[0])
+    print("  Action:", transition[1])
+    print("  Effects:", transition[2])
+
+def print_training_data(training_data):
+    for action, transitions_for_action in training_data.items():
+        print(colored(action, attrs=['bold']))
+        for transition in transitions_for_action:
+            print_transition(transition)
+            print()
+
 
 def learn_rule_set(training_data, outfile):
     """Main learning step
@@ -139,25 +161,28 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
     return all_returns
 
 
+
 def main():
     seed = 0
 
-    training_env = PybulletBlocksEnv(use_gui=False) #NDRBlocksEnv()
+    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #use_gui=False) #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
     training_env.close()
 
-    rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
-    rule_set = learn_rule_set(training_data, rule_set_outfile)
+    print_training_data(training_data)
 
-    test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.mp4') # NDRBlocksEnv
-    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
-    test_env.close()
+    # rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
+    # rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    print("Test results:")
-    print(test_results)
+    # test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.mp4') # NDRBlocksEnv
+    # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    # test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    # test_env.close()
+
+    # print("Test results:")
+    # print(test_results)
 
 
 if __name__ == "__main__":
