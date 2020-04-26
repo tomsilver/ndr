@@ -703,13 +703,13 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
                                  video_out=None):
 
     class AbstractPybulletEnv(gym.Env):
-        low_level_env = low_level_cls()
         action_predicates = list(controllers.keys())
         observation_predicates = obs_preds
 
         def __init__(self):
             self.action_space = LiteralSpace(self.action_predicates)
             self.observation_space = LiteralSetSpace(set(self.observation_predicates))
+            self.low_level_env = low_level_cls()
 
             if record_low_level_video:
                 self.low_level_env = VideoWrapper(self.low_level_env, video_out)

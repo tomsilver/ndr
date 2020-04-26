@@ -16,70 +16,70 @@ ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
-## Data collection
-def collect_manual_transition_dataset():
-    """For debugging
-    """
-    from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
-    transitions = defaultdict(list)
+# ## Data collection
+# def collect_manual_transition_dataset():
+#     """For debugging
+#     """
+#     from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
+#     transitions = defaultdict(list)
 
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("b")
-    effects = set()
-    transitions[action.predicate].append((state, action, effects))
+#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+#     action = pickup("b")
+#     effects = set()
+#     transitions[action.predicate].append((state, action, effects))
 
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("c")
-    effects = set()
-    transitions[action.predicate].append((state, action, effects))
+#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+#     action = pickup("c")
+#     effects = set()
+#     transitions[action.predicate].append((state, action, effects))
 
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("a")
-    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-        holding("a")}
-    transitions[action.predicate].append((state, action, effects))
+#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+#     action = pickup("a")
+#     effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
+#         holding("a")}
+#     transitions[action.predicate].append((state, action, effects))
 
-    state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-    action = pickup("a")
-    effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-        holding("a")}
-    transitions[action.predicate].append((state, action, effects))
+#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
+#     action = pickup("a")
+#     effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
+#         holding("a")}
+#     transitions[action.predicate].append((state, action, effects))
 
-    return transitions
+#     return transitions
 
-def collect_transition_dataset(env, num_problems, num_transitions_per_problem, policy=None, actions="all"):
-    """Collect transitions (state, action, effect) for the given actions
-    Make sure that no more than 50% of outcomes per action are null.
-    """
-    total_counts = defaultdict(int)
-    num_no_effects = defaultdict(int)
+# def collect_transition_dataset(env, num_problems, num_transitions_per_problem, policy=None, actions="all"):
+#     """Collect transitions (state, action, effect) for the given actions
+#     Make sure that no more than 50% of outcomes per action are null.
+#     """
+#     total_counts = defaultdict(int)
+#     num_no_effects = defaultdict(int)
 
-    assert num_problems <= env.num_problems
-    if policy is None:
-        policy = lambda s : env.action_space.sample()
-    transitions = defaultdict(list)
-    for problem_idx in range(num_problems):
-        env.fix_problem_index(problem_idx)
-        done = True
-        for _ in range(num_transitions_per_problem):
-            if done:
-                obs, _ = env.reset()
-            action = policy(obs)
-            next_obs, _, done, _ = env.step(action)
-            effects = construct_effects(obs, next_obs)
-            null_effect = len(effects) == 0 or noiseoutcome() in effects
-            keep_transition = (actions == "all" or action.predicate in actions) and \
-                (not null_effect or (num_no_effects[action.predicate] < \
-                    total_counts[action.predicate]/2.+1))
-            if keep_transition:
-                total_counts[action.predicate] += 1
-                if null_effect:
-                    num_no_effects[action.predicate] += 1
-                transition = (obs, action, effects)
-                transitions[action.predicate].append(transition)
-            obs = next_obs
+#     assert num_problems <= env.num_problems
+#     if policy is None:
+#         policy = lambda s : env.action_space.sample()
+#     transitions = defaultdict(list)
+#     for problem_idx in range(num_problems):
+#         env.fix_problem_index(problem_idx)
+#         done = True
+#         for _ in range(num_transitions_per_problem):
+#             if done:
+#                 obs, _ = env.reset()
+#             action = policy(obs)
+#             next_obs, _, done, _ = env.step(action)
+#             effects = construct_effects(obs, next_obs)
+#             null_effect = len(effects) == 0 or noiseoutcome() in effects
+#             keep_transition = (actions == "all" or action.predicate in actions) and \
+#                 (not null_effect or (num_no_effects[action.predicate] < \
+#                     total_counts[action.predicate]/2.+1))
+#             if keep_transition:
+#                 total_counts[action.predicate] += 1
+#                 if null_effect:
+#                     num_no_effects[action.predicate] += 1
+#                 transition = (obs, action, effects)
+#                 transitions[action.predicate].append(transition)
+#             obs = next_obs
 
-    return transitions
+#     return transitions
 
 def construct_effects(obs, next_obs):
     """Convert a next observation into effects
@@ -467,6 +467,9 @@ def create_explain_examples_operator(action, transitions_for_action):
                     new_rule.preconditions.literals.extend(d)
             # Step 1.3: Complete the rule
             # Call InduceOutComes to create the rule's outcomes.
+            # If preconditions are empty, don't enumerate; this should be covered by the default rule
+            if len(new_rule.preconditions) == 0:
+                continue
             induce_outcomes(new_rule, transitions_for_action)
             assert new_rule.effects is not None
             if DEBUG: import ipdb; ipdb.set_trace()
@@ -538,7 +541,7 @@ def get_search_operators(action, transitions_for_action):
     return [explain_examples]
 
 ## Search
-def run_main_search(search_method, transition_dataset, max_node_expansions=1000, rng=None):
+def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, search_method="greedy"):
     """Run the main search
     """
     rule_sets = {}
@@ -636,7 +639,6 @@ def main():
     num_problems = 3
     num_transitions_per_problem = 250
     max_node_expansions = 10
-    search_method = "greedy"
     print("Collecting transition data... ", end='')
     # transition_dataset = collect_manual_transition_dataset()
     env = NDRBlocksEnv(seed=0)
@@ -644,7 +646,7 @@ def main():
     print("collected transitions for {} actions.".format(len(transition_dataset)))
     print("Running search...")
     start_time = time.time()
-    rule_set = run_main_search(search_method, transition_dataset, max_node_expansions=max_node_expansions)
+    rule_set = run_main_search(transition_dataset, max_node_expansions=max_node_expansions)
     print("Learned rule set:")
     print_rule_set(rule_set)
     print("Total search time:", time.time() - start_time)
