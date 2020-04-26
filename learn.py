@@ -181,7 +181,7 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
             transition_likelihood += p_min * prob
         else:
             grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
-            if grounded_outcome == effects:
+            if sorted(grounded_outcome) == sorted(effects):
                 transition_likelihood += prob
     return transition_likelihood
 

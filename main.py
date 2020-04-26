@@ -171,10 +171,13 @@ def main():
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
     training_env.close()
 
-    print_training_data(training_data)
+    # print_training_data(training_data)
 
-    # rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
-    # rule_set = learn_rule_set(training_data, rule_set_outfile)
+    del training_data["puton"]
+    del training_data["pickup"]
+
+    rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
+    rule_set = learn_rule_set(training_data, rule_set_outfile)
 
     # test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.mp4') # NDRBlocksEnv
     # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
