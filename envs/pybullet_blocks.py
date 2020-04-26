@@ -639,13 +639,18 @@ controllers = {
     putontable : PutontableController(),
 }
 
+
+# Noise effect
+noiseoutcome = Predicate("noiseoutcome", 0, [])
+
 # State predicates
 on = Predicate("on", 2, [block_type, block_type])
 ontable = Predicate("ontable", 1, [block_type])
 holding = Predicate("holding", 1, [block_type])
 clear = Predicate("clear", 1, [block_type])
 handempty = Predicate("handempty", 0, [])
-observation_predicates = [on, ontable, holding, clear, handempty]
+observation_predicates = [on, ontable, holding, clear, handempty, noiseoutcome]
+
 
 def get_observation(state):
     # First check whether we're holding a block
@@ -699,17 +704,16 @@ def get_observation(state):
 
 # TODO move this somewhere else, it is general
 def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, obs_preds,
-                                 controller_max_steps=100, record_low_level_video=False,
-                                 video_out=None):
+                                 controller_max_steps=100):
 
     class AbstractPybulletEnv(gym.Env):
         action_predicates = list(controllers.keys())
         observation_predicates = obs_preds
 
-        def __init__(self):
+        def __init__(self, record_low_level_video=False, video_out=None, *args, **kwargs):
             self.action_space = LiteralSpace(self.action_predicates)
             self.observation_space = LiteralSetSpace(set(self.observation_predicates))
-            self.low_level_env = low_level_cls()
+            self.low_level_env = low_level_cls(*args, **kwargs)
 
             if record_low_level_video:
                 self.low_level_env = VideoWrapper(self.low_level_env, video_out)
@@ -752,15 +756,15 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
     return AbstractPybulletEnv
 
 BasePybulletBlocksEnv = create_abstract_pybullet_env(LowLevelPybulletBlocksEnv, controllers, 
-    get_observation, observation_predicates, record_low_level_video=True, video_out='/tmp/lowlevel.mp4')
+    get_observation, observation_predicates)
 
 
 class PybulletBlocksEnv(BasePybulletBlocksEnv):
     """Add some high-level goals
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._goals = [
             LiteralConjunction([on("block2", "block1"), on("block1", "block0")]),

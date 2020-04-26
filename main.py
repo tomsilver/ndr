@@ -13,7 +13,7 @@ import os
 import numpy as np
 
 
-def collect_training_data(env, outfile):
+def collect_training_data(env, outfile, verbose=False):
     """Load or generate training data
     """
     if os.path.exists(outfile):
@@ -24,7 +24,7 @@ def collect_training_data(env, outfile):
             len(transition_dataset)))
     else:
         print("Collecting transition data... ", end='')
-        transition_dataset = collect_transition_dataset(env)
+        transition_dataset = collect_transition_dataset(env, verbose=verbose)
         num_transitions = sum(len(v) for v in transition_dataset.values())
         print("collected {} transitions for {} actions.".format(num_transitions, 
             len(transition_dataset)))
@@ -34,7 +34,7 @@ def collect_training_data(env, outfile):
     return transition_dataset
 
 def collect_transition_dataset(env, num_trials=100, num_transitions_per_problem=10, 
-                               policy=None, actions="all"):
+                               policy=None, actions="all", verbose=False):
     """Collect transitions (state, action, effect) for the given actions
     Make sure that no more than 50% of outcomes per action are null.
     """
@@ -45,8 +45,13 @@ def collect_transition_dataset(env, num_trials=100, num_transitions_per_problem=
         policy = lambda s : env.action_space.sample()
     transitions = defaultdict(list)
     for trial in range(num_trials):
+        if verbose:
+            print("\nCollecting data trial {}/{}".format(trial, num_trials))
         done = True
-        for _ in range(num_transitions_per_problem):
+        for transition_num in range(num_transitions_per_problem):
+            if verbose:
+                print("Collecting transition {}/{}".format(transition_num, num_transitions_per_problem),
+                    end='\r')
             if done:
                 obs, _ = env.reset()
             action = policy(obs)
@@ -104,7 +109,7 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
-def run_test_suite(rule_set, test_env_cls, outfile, num_problems=10, seed_start=10000,
+def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
                    num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
     if try_cache and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
@@ -114,7 +119,6 @@ def run_test_suite(rule_set, test_env_cls, outfile, num_problems=10, seed_start=
         for seed in range(seed_start, seed_start+num_problems):
             seed_returns = []
             for trial in range(num_trials_per_problem):
-                env = test_env_cls()
                 env.seed(seed)
                 initial_state, debug_info = env.reset()
                 goal = debug_info["goal"]
@@ -138,17 +142,19 @@ def run_test_suite(rule_set, test_env_cls, outfile, num_problems=10, seed_start=
 def main():
     seed = 0
 
-    training_env = NDRBlocksEnv()
+    training_env = PybulletBlocksEnv(use_gui=False) #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
-    training_data = collect_training_data(training_env, data_outfile)
+    training_data = collect_training_data(training_env, data_outfile, verbose=True)
+    training_env.close()
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env_cls = NDRBlocksEnv
-    test_outfile = "data/{}_test_results.pkl".format(test_env_cls.__name__)
-    test_results = run_test_suite(rule_set, test_env_cls, test_outfile, render=False)
+    test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.mp4') # NDRBlocksEnv
+    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    test_env.close()
 
     print("Test results:")
     print(test_results)
