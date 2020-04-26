@@ -272,6 +272,9 @@ class LiteralConjunction:
     def __len__(self):
         return len(self.literals)
 
+    def __iter__(self):
+        return iter(self.literals)
+
 
 class LiteralDisjunction:
     """A logical disjunction (OR) of Literals.

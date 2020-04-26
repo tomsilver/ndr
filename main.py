@@ -104,25 +104,33 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
-def run_test_suite(test_env_cls, test_outfile, num_problems=10, seed_start=10000,
-                   num_trials_per_problem=1, render=True, verbose=False):
-    all_returns = []
-    for seed in range(seed_start, seed_start+num_problems):
-        seed_returns = []
-        for trial in range(num_trials_per_problem):
-            env = test_env_cls()
-            env.seed(seed)
-            initial_state, debug_info = env.reset()
-            goal = debug_info["goal"]
-            policy = find_policy("ff_replan", initial_state, goal, env.operators, env.action_space, env.observation_space)
-            total_returns = 0
-            outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)
-            if render:
-                os.makedirs(outdir, exist_ok=True)
-            returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
-                outdir=outdir)
-            seed_returns.append(returns)
-        all_returns.append(seed_returns)
+def run_test_suite(rule_set, test_env_cls, outfile, num_problems=10, seed_start=10000,
+                   num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
+    if try_cache and os.path.exists(outfile):
+        with open(outfile, 'rb') as f:
+            all_returns = pickle.load(f)
+    else:
+        all_returns = []
+        for seed in range(seed_start, seed_start+num_problems):
+            seed_returns = []
+            for trial in range(num_trials_per_problem):
+                env = test_env_cls()
+                env.seed(seed)
+                initial_state, debug_info = env.reset()
+                goal = debug_info["goal"]
+                policy = find_policy("ff_replan", initial_state, goal, rule_set, env.action_space, 
+                    env.observation_space)
+                total_returns = 0
+                outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)
+                if render:
+                    os.makedirs(outdir, exist_ok=True)
+                returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
+                    outdir=outdir)
+                seed_returns.append(returns)
+            all_returns.append(seed_returns)
+        with open(outfile, 'wb') as f:
+            pickle.dump(all_returns, f)
+        print("Dumped test results to {}.".format(outfile))
     print("Average returns:", np.mean(all_returns))
     return all_returns
 
@@ -140,7 +148,7 @@ def main():
 
     test_env_cls = NDRBlocksEnv
     test_outfile = "data/{}_test_results.pkl".format(test_env_cls.__name__)
-    test_results = run_test_suite(test_env_cls, test_outfile, render=False)
+    test_results = run_test_suite(rule_set, test_env_cls, test_outfile, render=False)
 
     print("Test results:")
     print(test_results)

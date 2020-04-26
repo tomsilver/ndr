@@ -100,7 +100,7 @@ def iter_variable_names():
     """
     i = 0
     while True:
-        yield "X{}".format(i)
+        yield "?x{}".format(i)
         i += 1
 
 def find_assignments_for_ndr(ndr, state, action):

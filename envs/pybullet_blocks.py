@@ -751,7 +751,36 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
 
     return AbstractPybulletEnv
 
-PybulletBlocksEnv = create_abstract_pybullet_env(LowLevelPybulletBlocksEnv, controllers, 
+BasePybulletBlocksEnv = create_abstract_pybullet_env(LowLevelPybulletBlocksEnv, controllers, 
     get_observation, observation_predicates, record_low_level_video=True, video_out='/tmp/lowlevel.mp4')
+
+
+class PybulletBlocksEnv(BasePybulletBlocksEnv):
+    """Add some high-level goals
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        self._goals = [
+            LiteralConjunction([on("block2", "block1"), on("block1", "block0")]),
+            LiteralConjunction([on("block1", "block2"), on("block2", "block0")]),
+            LiteralConjunction([on("block1", "block2"), ontable("block0")]),
+        ]
+        self._num_goals = len(self._goals)
+        self._goal = None
+
+    def reset(self):
+        self._goal = self._goals[self.low_level_env.np_random.choice(self._num_goals)]
+        obs, _ = super().reset()
+        debug_info = {"goal" : self._goal}
+        return obs, debug_info
+
+    def step(self, action):
+        obs, _, _, _ = super().step(action)
+        reward = 1.0 if self._goal.holds(obs) else 0.0
+        done = reward == 1.
+        debug_info = {"goal" : self._goal}
+        return obs, reward, done, debug_info
 
 
