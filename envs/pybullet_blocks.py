@@ -176,17 +176,17 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         # For now, constant orientation (quaternion) for all blocks.
         orn_x, orn_y, orn_z, orn_w = 0., 0., 0., 1.
 
-        total_num_blocks = 3
+        total_num_blocks = 4
         num_blocks = 0
         num_piles = self.np_random.randint(1, 4)
         print("num_piles:", num_piles)
         for pile in range(num_piles):
+            if num_blocks == total_num_blocks:
+                break
             if pile == num_piles-1:
                 num_blocks_in_pile = total_num_blocks - num_blocks
             else:
-                num_blocks_in_pile = 1
-            # if num_blocks == total_num_blocks:
-            #     break
+                num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
             # if pile == num_piles-1:
             #     num_blocks_in_pile = total_num_blocks - num_blocks
             # else:
@@ -515,15 +515,14 @@ class PickupController(StateMachineController):
 
     # This makes learning a lot easier...
     def terminate_early(self, objects, obs):
+        # Check if the object is clear
+        block_name = objects[0].name
+        # Could recompute, but am lazy
+        pred_obs = get_observation(obs)
+        if clear(block_name) not in pred_obs and \
+            holding(block_name) not in pred_obs:
+            return True
         return False
-        # # Check if the object is clear
-        # block_name = objects[0].name
-        # # Could recompute, but am lazy
-        # pred_obs = get_observation(obs)
-        # if clear(block_name) not in pred_obs and \
-        #     holding(block_name) not in pred_obs:
-        #     return True
-        # return False
 
     def move_to_above_block(objects, obs):
         relative_grasp_position = np.array([0., 0., 0.])
@@ -582,13 +581,12 @@ class PickupController(StateMachineController):
 class PutonController(StateMachineController):
     # This makes learning a lot easier...
     def terminate_early(self, objects, obs):
+        # Check if the object is clear
+        block_name = objects[0].name
+        # Could recompute, but am lazy
+        if clear(block_name) not in get_observation(obs):
+            return True
         return False
-        # # Check if the object is clear
-        # block_name = objects[0].name
-        # # Could recompute, but am lazy
-        # if clear(block_name) not in get_observation(obs):
-        #     return True
-        # return False
 
     def move_to_above_block(objects, obs):
         block_name = objects[0].name
@@ -625,11 +623,10 @@ class PutontableController(StateMachineController):
 
     # This makes learning a lot easier...
     def terminate_early(self, objects, obs):
+        # Could recompute, but am lazy
+        if handempty() in get_observation(obs):
+            return True
         return False
-        # # Could recompute, but am lazy
-        # if handempty() in get_observation(obs):
-        #     return True
-        # return False
 
     def reset(self):
         PutontableController.open_position = None

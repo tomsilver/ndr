@@ -106,7 +106,7 @@ def print_training_data(training_data):
             print()
 
 
-def learn_rule_set(training_data, outfile):
+def learn_rule_set(training_data, outfile, init_rule_set=None):
     """Main learning step
     """
     if os.path.exists(outfile):
@@ -116,7 +116,7 @@ def learn_rule_set(training_data, outfile):
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
     else:
         print("Learning rules... ")
-        rules = run_main_search(training_data)
+        rules = run_main_search(training_data, init_rule_set=init_rule_set)
         num_rules = sum(len(v) for v in rules.values())
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
         with open(outfile, 'wb') as f:
@@ -130,6 +130,9 @@ def print_rule_set(rule_set):
         print(colored(action_predicate, attrs=['bold']))
         for rule in rule_set[action_predicate]:
             print(rule)
+
+def get_hardcoded_rules():
+    return NDRBlocksEnv().operators
 
 def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
                    num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
@@ -171,18 +174,23 @@ def main():
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
     training_env.close()
 
+    rule_set_outfile = "data/{}_hardcoded_rule_set.pkl".format(training_env.__class__.__name__)
+    hardcoded_rules = get_hardcoded_rules()
+    rule_set = learn_rule_set(training_data, rule_set_outfile,
+        init_rule_set=hardcoded_rules)
+
     # print_training_data(training_data)
 
-    rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
-    rule_set = learn_rule_set(training_data, rule_set_outfile)
+    # rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
+    # rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
-    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
-    test_env.close()
+    # test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
+    # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    # test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    # test_env.close()
 
-    print("Test results:")
-    print(test_results)
+    # print("Test results:")
+    # print(test_results)
 
 
 if __name__ == "__main__":

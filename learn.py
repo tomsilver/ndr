@@ -12,7 +12,7 @@ import copy
 import time
 
 
-ALPHA = 50. # Weight on rule set size penalty
+ALPHA = 40. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
@@ -35,7 +35,7 @@ def find_assignments_for_ndr(ndr, state, action):
     """
     kb = state | { action }
     assert action.predicate == ndr.action.predicate
-    conds = [ndr.action] + list(ndr.preconditions.literals)
+    conds = [ndr.action] + list(ndr.preconditions)
     return find_satisfying_assignments(kb, conds)
 
 def rule_covers_transition(rule, transition):
@@ -184,6 +184,21 @@ def score_rule(rule, transitions_for_rule, p_min=P_MIN, alpha=ALPHA, compute_pen
         score += np.log(transition_likelihood)
 
     return score
+
+## Init rule set
+def initialize_from_rule_set(rule_set, transitions_for_action):
+    init_rule_set = []
+    # Just fit the transition probabilities
+    for ndr in rule_set:
+        ndr_copy = copy.deepcopy(ndr)
+        rule_is_default = (len(ndr.preconditions) == 0)
+        covered_transitions = get_covered_transitions(ndr_copy, transitions_for_action,
+            rule_is_default=rule_is_default, action_rule_set=rule_set)
+        learn_parameters(ndr_copy, covered_transitions)
+        init_rule_set.append(ndr_copy)
+    score = score_action_rule_set(init_rule_set, transitions_for_action)
+    return score, init_rule_set
+
 
 ## Default rules
 def create_default_rule_set_for_action(action, transitions_for_action):
@@ -512,7 +527,8 @@ def get_search_operators(action, transitions_for_action):
     return [explain_examples]
 
 ## Search
-def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, search_method="greedy"):
+def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
+                    search_method="greedy", init_rule_set=None):
     """Run the main search
     """
     rule_sets = {}
@@ -521,10 +537,15 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, sear
         print("Running search for action", action)
 
         search_operators = get_search_operators(action, transitions_for_action)
-        init_score, init_state = create_default_rule_set_for_action(action, transitions_for_action)
+        if init_rule_set is not None:
+            init_score, init_state = initialize_from_rule_set(init_rule_set[action], 
+                transitions_for_action)
+        else:
+            init_score, init_state = create_default_rule_set_for_action(action, transitions_for_action)
 
-        print("Initial rule set:")
+        print("Initial rule set (score={}):".format(init_score))
         print_rule_set({action : init_state})
+        import ipdb; ipdb.set_trace()
 
         if search_method == "greedy":
             action_rule_set = run_greedy_search(search_operators, init_state, init_score, 
