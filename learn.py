@@ -12,7 +12,7 @@ import copy
 import time
 
 
-ALPHA = 30. # Weight on rule set size penalty
+ALPHA = 20. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 

@@ -124,7 +124,6 @@ def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, 
         if done:
             break
 
-    env.close()
     if check_reward:
         assert tot_reward > 0
     return tot_reward

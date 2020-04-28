@@ -724,11 +724,12 @@ def get_observation(state):
         contender_pile = None
         best_pile_dist = np.inf
         for pile in piles:
-            base_x, base_y = state["blocks"][pile[0]][3:5]
-            contender_pile_dist = abs(x - base_x) + abs(y - base_y)
-            if contender_pile_dist < 1e-2 and contender_pile_dist < best_pile_dist:
-                contender_pile = pile
-                best_pile_dist = contender_pile_dist
+            for block_in_pile in pile:
+                base_x, base_y = state["blocks"][block_in_pile][3:5]
+                contender_pile_dist = abs(x - base_x) + abs(y - base_y)
+                if contender_pile_dist < 1e-1 and contender_pile_dist < best_pile_dist:
+                    contender_pile = pile
+                    best_pile_dist = contender_pile_dist
         if contender_pile is None:
             piles.append([block_name])
         else:

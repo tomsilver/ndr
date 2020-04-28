@@ -193,7 +193,7 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
+    test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4') # NDRBlocksEnv
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
     test_env.close()
