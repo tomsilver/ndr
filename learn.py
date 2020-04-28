@@ -12,87 +12,13 @@ import copy
 import time
 
 
-ALPHA = 100. # Weight on rule set size penalty
+ALPHA = 50. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
-# ## Data collection
-# def collect_manual_transition_dataset():
-#     """For debugging
-#     """
-#     from envs.ndr_blocks import on, ontable, clear, handempty, pickup, holding
-#     transitions = defaultdict(list)
+class MultipleOutcomesPossible(Exception):
+    pass
 
-#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-#     action = pickup("b")
-#     effects = set()
-#     transitions[action.predicate].append((state, action, effects))
-
-#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-#     action = pickup("c")
-#     effects = set()
-#     transitions[action.predicate].append((state, action, effects))
-
-#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-#     action = pickup("a")
-#     effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-#         holding("a")}
-#     transitions[action.predicate].append((state, action, effects))
-
-#     state = {on("a", "b"), on("b", "c"), ontable("c"), clear("a"), handempty()}
-#     action = pickup("a")
-#     effects = {Anti(on("a", "b")), clear("b"), Anti(clear("a")), Anti(handempty()), 
-#         holding("a")}
-#     transitions[action.predicate].append((state, action, effects))
-
-#     return transitions
-
-# def collect_transition_dataset(env, num_problems, num_transitions_per_problem, policy=None, actions="all"):
-#     """Collect transitions (state, action, effect) for the given actions
-#     Make sure that no more than 50% of outcomes per action are null.
-#     """
-#     total_counts = defaultdict(int)
-#     num_no_effects = defaultdict(int)
-
-#     assert num_problems <= env.num_problems
-#     if policy is None:
-#         policy = lambda s : env.action_space.sample()
-#     transitions = defaultdict(list)
-#     for problem_idx in range(num_problems):
-#         env.fix_problem_index(problem_idx)
-#         done = True
-#         for _ in range(num_transitions_per_problem):
-#             if done:
-#                 obs, _ = env.reset()
-#             action = policy(obs)
-#             next_obs, _, done, _ = env.step(action)
-#             effects = construct_effects(obs, next_obs)
-#             null_effect = len(effects) == 0 or noiseoutcome() in effects
-#             keep_transition = (actions == "all" or action.predicate in actions) and \
-#                 (not null_effect or (num_no_effects[action.predicate] < \
-#                     total_counts[action.predicate]/2.+1))
-#             if keep_transition:
-#                 total_counts[action.predicate] += 1
-#                 if null_effect:
-#                     num_no_effects[action.predicate] += 1
-#                 transition = (obs, action, effects)
-#                 transitions[action.predicate].append(transition)
-#             obs = next_obs
-
-#     return transitions
-
-def construct_effects(obs, next_obs):
-    """Convert a next observation into effects
-    """
-    # This is just for debugging environments where noise outcomes are simulated
-    if noiseoutcome() in next_obs:
-        return { noiseoutcome() }
-    effects = set()
-    for lit in next_obs - obs:
-        effects.add(lit)
-    for lit in obs - next_obs:
-        effects.add(Anti(lit))
-    return effects
 
 ## Helper functions
 def iter_variable_names():
@@ -167,6 +93,27 @@ def get_pen(rule):
     for _, outcome in rule.effects:
         pen += len(outcome)
     return pen
+
+def get_effect_for_transition(rule, transition):
+    """Find the (assumed unique) effect that holds for the (assumed covered) transition
+    """
+    state, action, effects = transition
+    assignments = find_assignments_for_ndr(rule, state, action)
+    assert len(assignments) == 1, "Rule assumed to cover transition"
+    selected_outcome_idx = None
+    noise_outcome_idx = None
+    for i, (_, outcome) in enumerate(rule.effects):
+        if noiseoutcome() in outcome:
+            assert noise_outcome_idx is None
+            noise_outcome_idx = i
+        else:
+            grounded_outcome = {ground_literal(lit, assignments[0]) for lit in outcome}
+            if sorted(grounded_outcome) == sorted(effects):
+                if selected_outcome_idx is not None:
+                    raise MultipleOutcomesPossible()
+                selected_outcome_idx = i
+    assert noise_outcome_idx is not None
+    return noise_outcome_idx
 
 def get_transition_likelihood(transition, rule, p_min=P_MIN):
     """Calculate the likelihood of a transition for a rule that covers it
@@ -274,11 +221,21 @@ def get_unique_transitions(transitions):
 def learn_parameters(rule, covered_transitions, maxiter=100):
     """Learn effect probabilities given the rest of a rule
     """
-    # Set up the loss
-    def loss(x):
+    # First check whether all of the rule effects are mutually exclusive.
+    # If so, we can compute analytically!
+    try:
+        return learn_params_analytically(rule, covered_transitions)
+    except MultipleOutcomesPossible:
+        pass
+
+    def update_rule(x):
         for i, p in enumerate(x):
             _, eff = rule.effects[i]
             rule.effects[i] = (p, eff)
+
+    # Set up the loss
+    def loss(x):
+        update_rule(x)
         return -1. * score_rule(rule, covered_transitions, compute_penalty=False)
     # Set up init x
     x0 = [1./len(rule.effects) for _ in rule.effects]
@@ -289,8 +246,18 @@ def learn_parameters(rule, covered_transitions, maxiter=100):
         options={'disp' : False, 'maxiter' : maxiter})
     params = result.x
     assert all((0 <= p <= 1.) for p in params), "Optimization does not obey bounds"
-    return params
+    update_rule(params)
 
+def learn_params_analytically(rule, covered_transitions):
+    """Assuming effects are mutually exclusive, find best params"""
+    effect_counts = [0. for _ in rule.effects]
+    for transition in covered_transitions:
+        idx = get_effect_for_transition(rule, transition)
+        effect_counts[idx] += 1
+    params = np.array(effect_counts) / np.sum(effect_counts)
+    for i, p in enumerate(params):
+        _, eff = rule.effects[i]
+        rule.effects[i] = (p, eff)
 
 ## Induce outcomes
 def create_induce_outcome_add_operator(rule, covered_transitions):
@@ -302,7 +269,7 @@ def create_induce_outcome_add_operator(rule, covered_transitions):
             if noiseoutcome() in effect_i:
                 continue
             for k, (p_j, effect_j) in enumerate(effects[i+1:]):
-                j = k - (i+1)
+                j = k + (i+1)
                 if noiseoutcome() in effect_j:
                     continue
                 # Check for contradiction
@@ -324,6 +291,7 @@ def create_induce_outcome_add_operator(rule, covered_transitions):
                         remaining_effects.append(effect)
                     remaining_effects.append((combined_p, combined_effects))
                     # Search for better parameters
+                    # print("add remaining_effects:", remaining_effects)
                     rule.effects = remaining_effects
                     learn_parameters(rule, covered_transitions)
                     score = score_rule(rule, covered_transitions)
@@ -344,10 +312,11 @@ def create_induce_outcome_remove_operator(rule, covered_transitions):
                     continue
                 remaining_effects.append(effect)
                 # Search for better parameters
-                rule.effects = remaining_effects
-                learn_parameters(rule, covered_transitions)
-                score = score_rule(rule, covered_transitions)
-                yield score, [eff for eff in rule.effects]
+            # print("remove remaining_effects:", remaining_effects)
+            rule.effects = remaining_effects
+            learn_parameters(rule, covered_transitions)
+            score = score_rule(rule, covered_transitions)
+            yield score, [eff for eff in rule.effects]
         return
     return get_children
 
