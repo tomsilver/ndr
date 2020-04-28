@@ -12,7 +12,7 @@ import copy
 import time
 
 
-ALPHA = 40. # Weight on rule set size penalty
+ALPHA = 30. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
@@ -38,7 +38,7 @@ def find_assignments_for_ndr(ndr, state, action):
     conds = [ndr.action] + list(ndr.preconditions)
     return find_satisfying_assignments(kb, conds)
 
-def rule_covers_transition(rule, transition):
+def rule_covers_transition(rule, transition, check_changed_objects=True):
     """Check whether the action and preconditions cover the transition
     """
     state, action, effects = transition
@@ -47,14 +47,17 @@ def rule_covers_transition(rule, transition):
     if len(assignments) == 1:
         assigned_vals = set(assignments[0].values())
         # Only covers if all the objects in the effects are bound to vars
-        for lit in effects:
-            for val in lit.variables:
-                if val not in assigned_vals:
-                    return False
+        if check_changed_objects:
+            for lit in effects:
+                for val in lit.variables:
+                    if val not in assigned_vals:
+                        return False
         return True
     return False
 
-def get_covered_transitions(rule, transitions_for_action, rule_is_default=False, action_rule_set=None):
+def get_covered_transitions(rule, transitions_for_action, 
+                            rule_is_default=False, action_rule_set=None,
+                            check_changed_objects=True):
     """Collect the transitions that this rule covers
     """
     if rule_is_default:
@@ -68,7 +71,8 @@ def get_covered_transitions(rule, transitions_for_action, rule_is_default=False,
         if rule_is_default:
             if covered_by_default_rule(transition, action_rule_set):
                 covered_transitions.append(transition)
-        elif rule_covers_transition(rule, transition):
+        elif rule_covers_transition(rule, transition, 
+            check_changed_objects=check_changed_objects):
             covered_transitions.append(transition)
     return covered_transitions
 
@@ -193,7 +197,8 @@ def initialize_from_rule_set(rule_set, transitions_for_action):
         ndr_copy = copy.deepcopy(ndr)
         rule_is_default = (len(ndr.preconditions) == 0)
         covered_transitions = get_covered_transitions(ndr_copy, transitions_for_action,
-            rule_is_default=rule_is_default, action_rule_set=rule_set)
+            rule_is_default=rule_is_default, action_rule_set=rule_set,
+            check_changed_objects=False)
         learn_parameters(ndr_copy, covered_transitions)
         init_rule_set.append(ndr_copy)
     score = score_action_rule_set(init_rule_set, transitions_for_action)
@@ -218,7 +223,7 @@ def covered_by_default_rule(transition, action_rule_set):
     """
     # default rule is assumed to be last!
     for rule in action_rule_set[:-1]:
-        if rule_covers_transition(rule, transition):
+        if rule_covers_transition(rule, transition, check_changed_objects=False):
             return False
     return True
 
@@ -545,7 +550,6 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
 
         print("Initial rule set (score={}):".format(init_score))
         print_rule_set({action : init_state})
-        import ipdb; ipdb.set_trace()
 
         if search_method == "greedy":
             action_rule_set = run_greedy_search(search_operators, init_state, init_score, 

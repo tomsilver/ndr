@@ -1,7 +1,7 @@
 """Full data gathering, learning and planning pipeline
 """
 from ndr.structs import Anti
-from envs.ndr_blocks import NDRBlocksEnv, noiseoutcome
+from envs.ndr_blocks import NDRBlocksEnv, noiseoutcome, ontable, clear
 from envs.pybullet_blocks import PybulletBlocksEnv
 from ndr.learn import run_main_search
 from ndr.planning import find_policy
@@ -62,9 +62,18 @@ def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_pro
             if done:
                 obs, _ = env.reset()
             action = policy(obs)
+            print("  Obs:", obs)
+            print("  Act:", action)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
-            print_transition((obs, action, effects))
+            print("  Eff:", effects)
+
+            # if action.predicate == "pickup":
+            #     obj = action.variables[0]
+            #     if ontable(obj) in obs and clear(obj) in obs:
+            #         import ipdb; ipdb.set_trace()
+
+
             null_effect = len(effects) == 0 or noiseoutcome() in effects
             keep_transition = (actions == "all" or action.predicate in actions) and \
                 (not null_effect or (num_no_effects[action.predicate] < \
@@ -174,23 +183,23 @@ def main():
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
     training_env.close()
 
-    rule_set_outfile = "data/{}_hardcoded_rule_set.pkl".format(training_env.__class__.__name__)
-    hardcoded_rules = get_hardcoded_rules()
-    rule_set = learn_rule_set(training_data, rule_set_outfile,
-        init_rule_set=hardcoded_rules)
+    # rule_set_outfile = "data/{}_hardcoded_rule_set.pkl".format(training_env.__class__.__name__)
+    # hardcoded_rules = get_hardcoded_rules()
+    # rule_set = learn_rule_set(training_data, rule_set_outfile,
+    #     init_rule_set=hardcoded_rules)
 
     # print_training_data(training_data)
 
-    # rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
-    # rule_set = learn_rule_set(training_data, rule_set_outfile)
+    rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
+    rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    # test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
-    # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    # test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
-    # test_env.close()
+    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
+    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    test_env.close()
 
-    # print("Test results:")
-    # print(test_results)
+    print("Test results:")
+    print(test_results)
 
 
 if __name__ == "__main__":

@@ -179,7 +179,6 @@ class LowLevelPybulletBlocksEnv(gym.Env):
         total_num_blocks = 4
         num_blocks = 0
         num_piles = self.np_random.randint(1, 4)
-        print("num_piles:", num_piles)
         for pile in range(num_piles):
             if num_blocks == total_num_blocks:
                 break
@@ -187,10 +186,6 @@ class LowLevelPybulletBlocksEnv(gym.Env):
                 num_blocks_in_pile = total_num_blocks - num_blocks
             else:
                 num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
-            # if pile == num_piles-1:
-            #     num_blocks_in_pile = total_num_blocks - num_blocks
-            # else:
-            #     num_blocks_in_pile = self.np_random.randint(1, total_num_blocks-num_blocks+1)
             num_blocks += num_blocks_in_pile
             # Block stack blocks.
             x, y = 1.25, 0.5 + pile*0.2
@@ -522,6 +517,10 @@ class PickupController(StateMachineController):
         if clear(block_name) not in pred_obs and \
             holding(block_name) not in pred_obs:
             return True
+        # If we're holding something else, terminate
+        for lit in pred_obs:
+            if lit.predicate == holding and lit.variables[0] != block_name:
+                return True
         return False
 
     def move_to_above_block(objects, obs):
