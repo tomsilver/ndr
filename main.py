@@ -34,7 +34,7 @@ def collect_training_data(env, outfile, verbose=False, actions="all"):
         print("Dumped dataset to {}.".format(outfile))
     return transition_dataset
 
-def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_problem=5,
+def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_problem=1,
                                max_transitions_per_action=500, policy=None, actions="all", verbose=False):
     """Collect transitions (state, action, effect) for the given actions
     Make sure that no more than 50% of outcomes per action are null.
@@ -165,7 +165,7 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
 def main():
     seed = 0
 
-    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #use_gui=False) #NDRBlocksEnv()
+    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
@@ -173,19 +173,16 @@ def main():
 
     # print_training_data(training_data)
 
-    del training_data["puton"]
-    del training_data["pickup"]
-
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    # test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.mp4') # NDRBlocksEnv
-    # test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    # test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
-    # test_env.close()
+    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel.gif') # NDRBlocksEnv
+    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    test_env.close()
 
-    # print("Test results:")
-    # print(test_results)
+    print("Test results:")
+    print(test_results)
 
 
 if __name__ == "__main__":
