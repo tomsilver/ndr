@@ -112,6 +112,8 @@ def get_effect_for_transition(rule, transition):
                 if selected_outcome_idx is not None:
                     raise MultipleOutcomesPossible()
                 selected_outcome_idx = i
+    if selected_outcome_idx is not None:
+        return selected_outcome_idx
     assert noise_outcome_idx is not None
     return noise_outcome_idx
 
