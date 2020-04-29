@@ -188,6 +188,8 @@ def main():
     # rule_set = learn_rule_set(training_data, rule_set_outfile,
     #     init_rule_set=hardcoded_rules)
 
+    # del training_data["putontable"]
+
     # print_training_data(training_data)
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)

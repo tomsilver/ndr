@@ -442,3 +442,8 @@ class NDR:
     def __repr__(self):
         return str(self)
 
+    def copy(self):
+        preconditions = LiteralConjunction([p for p in self.preconditions])
+        effects = [eff for eff in self.effects]
+        return NDR(self.action, preconditions, effects)
+

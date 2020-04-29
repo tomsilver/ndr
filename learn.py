@@ -38,26 +38,18 @@ def find_assignments_for_ndr(ndr, state, action):
     conds = [ndr.action] + list(ndr.preconditions)
     return find_satisfying_assignments(kb, conds)
 
-def rule_covers_transition(rule, transition, check_changed_objects=True):
+def rule_covers_transition(rule, transition):
     """Check whether the action and preconditions cover the transition
     """
     state, action, effects = transition
     assignments = find_assignments_for_ndr(rule, state, action)
     # Only covers if there is a unique binding of the variables
     if len(assignments) == 1:
-        assigned_vals = set(assignments[0].values())
-        # Only covers if all the objects in the effects are bound to vars
-        if check_changed_objects:
-            for lit in effects:
-                for val in lit.variables:
-                    if val not in assigned_vals:
-                        return False
         return True
     return False
 
 def get_covered_transitions(rule, transitions_for_action, 
-                            rule_is_default=False, action_rule_set=None,
-                            check_changed_objects=True):
+                            rule_is_default=False, action_rule_set=None):
     """Collect the transitions that this rule covers
     """
     if rule_is_default:
@@ -71,8 +63,7 @@ def get_covered_transitions(rule, transitions_for_action,
         if rule_is_default:
             if covered_by_default_rule(transition, action_rule_set):
                 covered_transitions.append(transition)
-        elif rule_covers_transition(rule, transition, 
-            check_changed_objects=check_changed_objects):
+        elif rule_covers_transition(rule, transition):
             covered_transitions.append(transition)
     return covered_transitions
 
@@ -164,7 +155,7 @@ def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, 
             selected_ndr, p_min=p_min)
         # Add to score
         if transition_likelihood == 0.:
-            return -10e8
+                return -10e8
         score += np.log(transition_likelihood)
 
     return score
@@ -197,8 +188,7 @@ def initialize_from_rule_set(rule_set, transitions_for_action):
         ndr_copy = copy.deepcopy(ndr)
         rule_is_default = (len(ndr.preconditions) == 0)
         covered_transitions = get_covered_transitions(ndr_copy, transitions_for_action,
-            rule_is_default=rule_is_default, action_rule_set=rule_set,
-            check_changed_objects=False)
+            rule_is_default=rule_is_default, action_rule_set=rule_set)
         learn_parameters(ndr_copy, covered_transitions)
         init_rule_set.append(ndr_copy)
     score = score_action_rule_set(init_rule_set, transitions_for_action)
@@ -223,7 +213,7 @@ def covered_by_default_rule(transition, action_rule_set):
     """
     # default rule is assumed to be last!
     for rule in action_rule_set[:-1]:
-        if rule_covers_transition(rule, transition, check_changed_objects=False):
+        if rule_covers_transition(rule, transition):
             return False
     return True
 
@@ -370,7 +360,11 @@ def induce_outcomes(rule, transitions_for_action, rule_is_default=False, action_
             inverse_sigma = {v : k for k, v in assignments[0].items()}
             lifted_effects = set()
             for effect in effects:
-                lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
+                try:
+                    lifted_effect = effect.predicate(*[inverse_sigma[val] for val in effect.variables])
+                except KeyError:
+                    # Unnamed object in effect... only can be noise
+                    continue
                 lifted_effects.add(lifted_effect)
             all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     # Initialize effects with uniform distribution over all possible outcomes
@@ -524,12 +518,110 @@ def create_explain_examples_operator(action, transitions_for_action):
 
     return explain_examples_for_action
 
+def create_drop_rules_operator(action, transitions_for_action):
+    """Search operator that drops one rule from the set
+    """
+    def drop_rules(action_rule_set):
+        print("Running drop rules")
+        # Don't drop the default rule
+        for i in range(len(action_rule_set)-1):
+            remaining_rules = [action_rule_set[j].copy() for j in range(len(action_rule_set)) \
+                if i != j]
+            induce_outcomes(remaining_rules[-1], transitions_for_action,
+                    rule_is_default=True, action_rule_set=remaining_rules)
+            score = score_action_rule_set(remaining_rules, transitions_for_action)
+            yield score, remaining_rules
+    return drop_rules
+
+def create_drop_lits_operator(action, transitions_for_action):
+    """Search operator that drops one lit per rule from the set
+    """
+    def drop_lits(action_rule_set):
+        print("Running drop lits")
+        # Don't drop the default rule
+        for i in range(len(action_rule_set)-1):
+            num_preconds = len(action_rule_set[i].preconditions)
+            if num_preconds <= 1:
+                continue
+            for drop_i in range(num_preconds):
+                remaining_rules = [rule.copy() for rule in action_rule_set]
+                del remaining_rules[i].preconditions.literals[drop_i]
+                induce_outcomes(remaining_rules[i], transitions_for_action)
+                induce_outcomes(remaining_rules[-1], transitions_for_action,
+                    rule_is_default=True, action_rule_set=remaining_rules)
+                score = score_action_rule_set(remaining_rules, transitions_for_action)
+                yield score, remaining_rules
+    return drop_lits
+
+def create_add_lits_operator(action, transitions_for_action):
+    """Search operator that adds one lit per rule from the set
+    """
+    # Get all possible lits to add
+    all_possible_additions = set()
+    unique_transitions = get_unique_transitions(transitions_for_action)
+
+    for i, transition in enumerate(unique_transitions):
+        s, a, effs = transition
+        variable_name_generator = iter_variable_names()
+        variables = [next(variable_name_generator) for _ in a.variables]
+        sigma = dict(zip(variables, a.variables))
+        sigma_inverse = {v : k for k, v in sigma.items()}
+        for lit in s:
+            if all(val in sigma_inverse for val in lit.variables):
+                lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
+                all_possible_additions.add(lifted_lit)
+        changed_objects = set()
+        for lit in effs:
+            for val in lit.variables:
+                if val not in sigma_inverse:
+                    changed_objects.add(val)
+        for c in sorted(changed_objects):
+            # Create a new variable and extend sigma to map v to c
+            new_variable = next(variable_name_generator)
+            sigma[new_variable] = c
+            assert c not in sigma_inverse
+            sigma_inverse[c] = new_variable
+            for lit in s:
+                if c not in lit.variables:
+                    continue
+                if all(val in sigma_inverse for val in lit.variables):
+                    lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
+                    all_possible_additions.add(lifted_lit)
+
+    all_possible_additions = sorted(all_possible_additions)
+
+    def add_lits(action_rule_set):
+        print("Running add lits")
+        # Don't add to the default rule
+        for i in range(len(action_rule_set)-1):
+            for new_lit in all_possible_additions:
+                remaining_rules = [rule.copy() for rule in action_rule_set]
+                if new_lit in remaining_rules[i].preconditions:
+                    continue
+                remaining_rules[i].preconditions.literals.append(new_lit)
+                induce_outcomes(remaining_rules[i], transitions_for_action)
+                induce_outcomes(remaining_rules[-1], transitions_for_action,
+                    rule_is_default=True, action_rule_set=remaining_rules)
+                score = score_action_rule_set(remaining_rules, transitions_for_action)
+                import ipdb; ipdb.set_trace()
+                yield score, remaining_rules
+    return add_lits
+
+
 def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = create_explain_examples_operator(action, transitions_for_action)
+    drop_rules = create_drop_rules_operator(action, transitions_for_action)
+    drop_lits = create_drop_lits_operator(action, transitions_for_action)
+    add_lits = create_add_lits_operator(action, transitions_for_action)
 
-    return [explain_examples]
+    return [
+        explain_examples, 
+        add_lits, 
+        drop_rules,
+        drop_lits
+    ]
 
 ## Search
 def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
