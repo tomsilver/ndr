@@ -11,87 +11,6 @@ import gym
 import imageio
 
 
-def run_random_agent_demo(env, outdir='/tmp', max_num_steps=10, fps=3, 
-                          verbose=False, seed=None, render=True):
-    if outdir is None:
-        outdir = "/tmp/{}".format(env.__class__.__name__)
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
-
-    if render:
-        video_path = os.path.join(outdir, 'random_{}_demo.gif'.format(env.__class__.__name__))
-        env = VideoWrapper(env, video_path, fps=fps)
-
-    if seed is not None:
-        env.seed(seed)
-
-    obs, _ = env.reset()
-
-    if seed is not None:
-        env.action_space.seed(seed)
-
-    for t in range(max_num_steps):
-        if verbose:
-            print("Obs:", obs)
-    
-        action = env.action_space.sample()
-        if verbose:
-            print("Act:", action)
-
-        obs, reward, done, _ = env.step(action)
-        if render:
-            env.render()
-        if verbose:
-            print("Rew:", reward)
-
-        if done:
-            break
-
-    if verbose:
-        print("Final obs:", obs)
-        print()
-
-    env.close()
-
-
-def run_plan(env, plan, verbose=False, check_reward=True, render=True, outdir='/tmp/', fps=3):
-    if outdir is None:
-        outdir = "/tmp/{}".format(env.__class__.__name__)
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
-
-    if render:
-        video_path = os.path.join(outdir, 'plan_{}_demo.gif'.format(env.__class__.__name__))
-        env = VideoWrapper(env, video_path, fps=fps)
-
-    obs, debug_info = env.reset()
-
-    tot_reward = 0.
-    for action in plan:
-        if verbose:
-            print("Obs:", obs)
-    
-        if verbose:
-            print("Act:", action)
-
-        obs, reward, done, _ = env.step(action)
-        if render:
-            env.render()
-        tot_reward += reward
-        if verbose:
-            print("Rew:", reward)
-
-        if done:
-            if verbose:
-                print("Final obs:", obs)
-                print()
-            break
-
-    env.close()
-    if check_reward:
-        assert tot_reward > 0
-    return tot_reward
-
 def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, render=True, 
                outdir='/tmp/', fps=3):
     if outdir is None:
@@ -110,11 +29,11 @@ def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, 
         if verbose:
             print("Obs:", obs)
     
-        action = policy(obs)
+        action = policy(obs, debug_info['goal'])
         if verbose:
             print("Act:", action)
 
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, debug_info = env.step(action)
         if render:
             env.render()
         tot_reward += reward

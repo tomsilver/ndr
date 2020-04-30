@@ -156,7 +156,7 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
                 env.seed(seed)
                 initial_state, debug_info = env.reset()
                 goal = debug_info["goal"]
-                policy = find_policy("ff_replan", initial_state, goal, rule_set, env.action_space, 
+                policy = find_policy("ff_replan", initial_state, rule_set, env.action_space, 
                     env.observation_space)
                 total_returns = 0
                 outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)
@@ -198,9 +198,9 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
+    test_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
     test_env.close()
 
     print("Test results:")

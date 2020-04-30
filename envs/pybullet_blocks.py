@@ -827,10 +827,13 @@ class PybulletBlocksEnv(BasePybulletBlocksEnv):
         self._goal = None
 
     def reset(self):
-        self._goal = self._goals[self.low_level_env.np_random.choice(self._num_goals)]
-        obs, _ = super().reset()
-        debug_info = {"goal" : self._goal}
-        return obs, debug_info
+        while True:
+            self._goal = self._goals[self.low_level_env.np_random.choice(self._num_goals)]
+            obs, _ = super().reset()
+            if self._goal.holds(obs):
+                continue
+            debug_info = {"goal" : self._goal}
+            return obs, debug_info
 
     def step(self, action):
         obs, _, _, _ = super().step(action)
