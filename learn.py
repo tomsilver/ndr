@@ -312,7 +312,7 @@ class InduceOutcomesAddOperator(InduceOutcomesSearchOperator):
                 combined_effects = sorted(set(effects[i]) | set(effects[j]))
                 # Get the other effects
                 new_effects = []
-                for k in range(len(effects))
+                for k in range(len(effects)):
                     if k in [i, j]:
                         continue
                     new_effects.append(effects[k])
@@ -402,7 +402,7 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         """
         rule = self._rule.copy()
         rule.preconditions = preconditions
-        rule_set = NDRSet([rule])
+        rule_set = NDRSet(rule.action, [rule])
         # Induce outcomes for both rules
         rule_transitions, default_transitions = \
             rule_set.partition_transitions(self.transitions)
@@ -521,7 +521,7 @@ class ExplainExamples(SearchOperator):
                 if not rule.covers_transition(t):
                     new_rules.append(rule)
         # New rule set
-        new_rule_set = NDRSet(new_rules)
+        new_rule_set = NDRSet(new_rule.action, new_rules)
         # Recompute the parameters of the default rule
         default_rule = new_rule_set.default_ndr
         partitions = new_rule_set.partition_transitions(self.transitions_for_action)

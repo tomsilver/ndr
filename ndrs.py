@@ -26,12 +26,12 @@ class NDR:
         self.effect_probs = effect_probs
         self.effects = effects
 
-        assert isinstance(action, Literal)
         assert isinstance(preconditions, list)
         assert len(effect_probs) == len(effects)
 
         # Exactly one effect should have the noise outcome
-        assert sum([NOISE_OUTCOME in e for e in effects]) == 1
+        if len(effects) > 0:
+            assert sum([NOISE_OUTCOME in e for e in effects]) == 1
 
     def __str__(self):
         effs_str = "\n        ".join(["{}: {}".format(p, eff) \
@@ -49,7 +49,7 @@ class NDR:
         action = self.action
         preconditions = [p for p in self.preconditions]
         effect_probs = np.array(self.effect_probs)
-        effects = [eff for eff in self.effects]
+        effects = [eff.copy() for eff in self.effects]
         return NDR(action, preconditions, effect_probs, effects)
 
     def find_substitutions(self, state, action):
@@ -91,7 +91,7 @@ class NDR:
         lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
         selected_outcome_idx = None
         noise_outcome_idx = None
-        for i, outcome in enumerate(rule.effects):
+        for i, outcome in enumerate(self.effects):
             if NOISE_OUTCOME in outcome:
                 assert noise_outcome_idx is None
                 noise_outcome_idx = i
@@ -122,12 +122,16 @@ class NDRSet:
     def __init__(self, action, ndrs, default_ndr=None):
         self.action = action
         self.ndrs = list(ndrs)
-        self.default_ndr = self._create_default_ndr(action)
+        if default_ndr is None:
+            self.default_ndr = self._create_default_ndr(action)
+        else:
+            self.default_ndr = default_ndr
 
         # Cannot have empty preconds
         for ndr in ndrs:
             assert len(ndr.preconditions) > 0
             assert ndr.action == action
+        assert self.default_ndr.action == action
 
     def __iter__(self):
         return iter(self.ndrs + [self.default_ndr])
