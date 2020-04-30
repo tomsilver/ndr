@@ -120,24 +120,26 @@ def test_integration():
         assert np.sum(test_results) == 6.0
     print("NDRBlocks integration test passed.")
 
-    # # Test PybulletBlocksEnv
-    # with nostdout():
-    #     training_env = PybulletBlocksEnv(use_gui=False)
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = PybulletBlocksEnv(use_gui=False)
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 8.0
-    # print("PybulletBlocksEnv integration test passed.")
+    # Test PybulletBlocksEnv
+    with nostdout():
+        training_env = PybulletBlocksEnv(use_gui=False)
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = PybulletBlocksEnv(use_gui=False)
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+        test_env.close()
+        assert np.sum(test_results) == 8.0
+    print("PybulletBlocksEnv integration test passed.")
 
-    # print("Integration tests passed.")
+    print("Integration tests passed.")
 
 
 if __name__ == "__main__":
-    # test_ndr()
-    # test_ndr_set()
+    import time
+    start_time = time.time()
+    test_ndr()
+    test_ndr_set()
     test_integration()
-
+    print("Tests completed in {} seconds".format(time.time() - start_time))
