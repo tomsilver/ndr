@@ -3,7 +3,8 @@ from ndr.learn import *
 from pddlgym.structs import Type, Anti
 from ndr.main import *
 from ndr.utils import nostdout
-
+import gym
+import pddlgym
 import numpy as np
 
 
@@ -106,6 +107,23 @@ def test_ndr_set():
 def test_integration():
     seed = 0
     print("Running integration tests (this may take a few minutes)")
+
+    # Test Hanoi
+    with nostdout():
+        training_env = gym.make("PDDLEnvHanoi-v0")
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env,
+            num_transitions_per_problem=10,
+            max_transitions_per_action=500)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = NDRBlocksEnv()
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+            num_problems=5,
+            max_num_steps=10000)
+        test_env.close()
+        assert np.sum(test_results) == 5
+    print("Hanoi integration test passed.")
 
     # Test NDRBlocks
     with nostdout():

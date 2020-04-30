@@ -636,47 +636,57 @@ class ExplainExamples(SearchOperator):
             score = score_action_rule_set(new_rule_set, self.transitions_for_action)
             yield score, new_rule_set
 
-# def create_drop_rules_operator(action, transitions_for_action):
-#     """Search operator that drops one rule from the set
-#     """
-#     def drop_rules(action_rule_set):
-#         print("Running drop rules")
-#         # Don't drop the default rule
-#         for i in range(len(action_rule_set)-1):
-#             remaining_rules = [action_rule_set[j].copy() for j in range(len(action_rule_set)) \
-#                 if i != j]
-#             induce_outcomes(remaining_rules[-1], transitions_for_action,
-#                     rule_is_default=True, action_rule_set=remaining_rules)
-#             score = score_action_rule_set(remaining_rules, transitions_for_action)
-#             yield score, remaining_rules
-#     return drop_rules
+class DropRules(SearchOperator):
+    """Search operator that drops one rule from the set
+    """
+    def __init__(self, transitions_for_action):
+        self.transitions_for_action = transitions_for_action
 
-# def create_drop_lits_operator(action, transitions_for_action):
-#     """Search operator that drops one lit per rule from the set
-#     """
-#     def drop_lits(action_rule_set):
-#         print("Running drop lits")
-#         # Don't drop the default rule
-#         for i in range(len(action_rule_set)-1):
-#             num_preconds = len(action_rule_set[i].preconditions)
-#             if num_preconds <= 1:
-#                 continue
-#             for drop_i in range(num_preconds):
-#                 remaining_rules = [rule.copy() for rule in action_rule_set]
-#                 del remaining_rules[i].preconditions.literals[drop_i]
-#                 induce_outcomes(remaining_rules[i], transitions_for_action)
-#                 induce_outcomes(remaining_rules[-1], transitions_for_action,
-#                     rule_is_default=True, action_rule_set=remaining_rules)
-#                 score = score_action_rule_set(remaining_rules, transitions_for_action)
-#                 yield score, remaining_rules
-#     return drop_lits
+    def get_children(self, action_rule_set):
+        print("Running drop rules")
+        # Don't drop the default rule
+        for i in range(len(action_rule_set.ndrs)):
+            new_rule_set = action_rule_set.copy()
+            del new_rule_set.ndrs[i]
+            # Refit default rule
+            partitions = new_rule_set.partition_transitions(self.transitions_for_action)
+            learn_parameters(new_rule_set.default_ndr, partitions[-1])
+            score = score_action_rule_set(new_rule_set, self.transitions_for_action)
+            yield score, new_rule_set
+
+
+class DropLits(SearchOperator):
+    """Search operator that drops one lit per rule from the set
+    """
+    def __init__(self, transitions_for_action):
+        self.transitions_for_action = transitions_for_action
+
+    def get_children(self, action_rule_set):
+        print("Running drop lits")
+        # Don't drop the default rule
+        for i, ndr in enumerate(action_rule_set.ndrs):
+            num_preconds = len(ndr.preconditions)
+            # Can't overlap with default rule
+            if num_preconds <= 1:
+                continue
+            for drop_i in range(num_preconds):
+                new_rule_set = action_rule_set.copy()
+                new_ndr = new_rule_set.ndrs[i]
+                del new_ndr.preconditions[drop_i]
+                partitions = new_rule_set.partition_transitions(self.transitions_for_action)
+                # Induce new outcomes for modified ndr
+                induce_outcomes(new_ndr, partitions[i])
+                # Update default rule parameters
+                learn_parameters(new_rule_set.default_ndr, partitions[-1])
+                score = score_action_rule_set(new_rule_set, self.transitions_for_action)
+                yield score, new_rule_set
+
 
 class AddLits(SearchOperator):
     """Search operator that adds one lit per rule from the set
     """
 
-    def __init__(self, action, transitions_for_action):
-        self.action = action
+    def __init__(self, transitions_for_action):
         self.transitions_for_action = transitions_for_action
         self._all_possible_additions = self._get_all_possible_additions(transitions_for_action)
 
@@ -708,74 +718,19 @@ class AddLits(SearchOperator):
                 score = score_action_rule_set(new_rule_set, self.transitions_for_action)
                 yield score, new_rule_set
 
-# def create_add_lits_operator(action, transitions_for_action):
-    """Search operator that adds one lit per rule from the set
-    """
-#     # Get all possible lits to add
-#     all_possible_additions = set()
-#     unique_transitions = get_unique_transitions(transitions_for_action)
-
-#     for i, transition in enumerate(unique_transitions):
-#         s, a, effs = transition
-#         variable_name_generator = iter_variable_names()
-#         variables = [next(variable_name_generator) for _ in a.variables]
-#         sigma = dict(zip(variables, a.variables))
-#         sigma_inverse = {v : k for k, v in sigma.items()}
-#         for lit in s:
-#             if all(val in sigma_inverse for val in lit.variables):
-#                 lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
-#                 all_possible_additions.add(lifted_lit)
-#         changed_objects = set()
-#         for lit in effs:
-#             for val in lit.variables:
-#                 if val not in sigma_inverse:
-#                     changed_objects.add(val)
-#         for c in sorted(changed_objects):
-#             # Create a new variable and extend sigma to map v to c
-#             new_variable = next(variable_name_generator)
-#             sigma[new_variable] = c
-#             assert c not in sigma_inverse
-#             sigma_inverse[c] = new_variable
-#             for lit in s:
-#                 if c not in lit.variables:
-#                     continue
-#                 if all(val in sigma_inverse for val in lit.variables):
-#                     lifted_lit = lit.predicate(*[sigma_inverse[val] for val in lit.variables])
-#                     all_possible_additions.add(lifted_lit)
-
-#     all_possible_additions = sorted(all_possible_additions)
-
-#     def add_lits(action_rule_set):
-#         print("Running add lits")
-#         # Don't add to the default rule
-#         for i in range(len(action_rule_set)-1):
-#             for new_lit in all_possible_additions:
-#                 remaining_rules = [rule.copy() for rule in action_rule_set]
-#                 if new_lit in remaining_rules[i].preconditions:
-#                     continue
-#                 remaining_rules[i].preconditions.literals.append(new_lit)
-#                 induce_outcomes(remaining_rules[i], transitions_for_action)
-#                 induce_outcomes(remaining_rules[-1], transitions_for_action,
-#                     rule_is_default=True, action_rule_set=remaining_rules)
-#                 score = score_action_rule_set(remaining_rules, transitions_for_action)
-#                 import ipdb; ipdb.set_trace()
-#                 yield score, remaining_rules
-#     return add_lits
-
-
 def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
-    add_lits = AddLits(action, transitions_for_action)
-    # drop_rules = DropRules(action, transitions_for_action)
-    # drop_lits = DropLits(action, transitions_for_action)
+    add_lits = AddLits(transitions_for_action)
+    drop_rules = DropRules(transitions_for_action)
+    drop_lits = DropLits(transitions_for_action)
 
     return [
         explain_examples, 
         add_lits, 
-        # drop_rules,
-        # drop_lits
+        drop_rules,
+        drop_lits
     ]
 
 ## Main
