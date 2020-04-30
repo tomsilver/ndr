@@ -33,7 +33,7 @@ def find_ff_replan_policy(initial_state, goal, ndr_operators, action_space, obse
     for ndr_list in ndr_operators.values():
         for i, ndr in enumerate(ndr_list):
             op_name = "{}{}".format(ndr.action.predicate.name, i)
-            probs, effs = zip(*ndr.effects)
+            probs, effs = ndr.effect_probs, ndr.effects
             max_idx = np.argmax(probs)
             max_effects = LiteralConjunction(sorted(effs[max_idx]))
             if len(max_effects.literals) == 0:

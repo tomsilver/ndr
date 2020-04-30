@@ -151,6 +151,9 @@ class NDRSet:
     def __iter__(self):
         return iter(self.ndrs + [self.default_ndr])
 
+    def __len__(self):
+        return len(self.ndrs) + 1
+
     @staticmethod
     def _create_default_ndr(action):
         """Either nothing or noise happens by default

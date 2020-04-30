@@ -540,13 +540,15 @@ class ExplainExamples(SearchOperator):
         # Create a new rule set R' = R
         new_rules = [new_rule]
         # Add r to R' and remove any rules in R' that cover any examples r covers
-        for t in self.transitions_for_action:
-            if not new_rule.covers_transition(t):
-                continue
-            # leave out default rule
-            for rule in old_rule_set.ndrs:
-                if not rule.covers_transition(t):
-                    new_rules.append(rule)
+        # Leave out default rule
+        for rule in old_rule_set.ndrs:
+            keep_rule = True
+            for t in self.transitions_for_action:
+                if new_rule.covers_transition(t) and rule.covers_transition(t):
+                    keep_rule = False
+                    break
+            if keep_rule:
+                new_rules.append(rule)
         # New rule set
         new_rule_set = NDRSet(new_rule.action, new_rules)
         # Recompute the parameters of the default rule
@@ -573,6 +575,9 @@ class ExplainExamples(SearchOperator):
             if DEBUG: print_transition(transition)
             # Step 1: Create a new rule
             new_rule = self._initialize_new_rule(transition)
+            # If preconditions are empty, don't enumerate; this should be covered by the default rule
+            if len(new_rule.preconditions) == 0:
+                continue
             # Step 2: Trim literals from r
             self._trim_preconditions(new_rule)
             # If preconditions are empty, don't enumerate; this should be covered by the default rule

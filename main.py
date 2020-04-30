@@ -188,9 +188,12 @@ def main():
     # rule_set = learn_rule_set(training_data, rule_set_outfile,
     #     init_rule_set=hardcoded_rules)
 
-    # del training_data["putontable"]
+    del training_data["puton"]
+    # del training_data["pickup"]
+    del training_data["putontable"]
 
     # print_training_data(training_data)
+    # import ipdb; ipdb.set_trace()
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
