@@ -146,9 +146,7 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
             seed_returns = []
             for trial in range(num_trials_per_problem):
                 env.seed(seed)
-                initial_state, debug_info = env.reset()
-                goal = debug_info["goal"]
-                policy = find_policy("ff_replan", initial_state, rule_set, env.action_space, 
+                policy = find_policy("ff_replan", rule_set, env.action_space, 
                     env.observation_space)
                 total_returns = 0
                 outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)

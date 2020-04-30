@@ -21,12 +21,12 @@ class NoPlanFoundException(Exception):
 
 
 
-def find_policy(planner_name, initial_state, ndr_operators, action_space, observation_space):
+def find_policy(planner_name, ndr_operators, action_space, observation_space):
     if planner_name == "ff_replan":
-        return find_ff_replan_policy(initial_state, ndr_operators, action_space, observation_space)
+        return find_ff_replan_policy(ndr_operators, action_space, observation_space)
     raise Exception("Unknown planner `{}`".format(planner_name))
 
-def find_ff_replan_policy(initial_state, ndr_operators, action_space, observation_space):
+def find_ff_replan_policy(ndr_operators, action_space, observation_space):
     # First pull out the most likely effect per NDR to form
     # deterministic operators
     deterministic_operators = []
@@ -46,13 +46,13 @@ def find_ff_replan_policy(initial_state, ndr_operators, action_space, observatio
     domain_name = "mydomain"
     planner = FastForwardPlanner(deterministic_operators, domain_name, action_space, observation_space)
 
-    # Get objects from the initial state
-    objects = set()
-    for lit in initial_state:
-        objects.update(lit.variables)
-
     # Given a state, replan and execute first section in plan
     def policy(state, goal):
+        # Get objects from the state
+        objects = set()
+        for lit in state:
+            objects.update(lit.variables)
+
         # Add possible actions to state
         full_state = state.copy()
         full_state.update(action_space.all_ground_literals())
