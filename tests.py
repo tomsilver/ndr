@@ -1,6 +1,11 @@
 from ndr.ndrs import *
 from ndr.learn import *
 from ndr.structs import Type, Anti
+from ndr.main import *
+from ndr.utils import nostdout
+
+import numpy as np
+
 
 # Some shared stuff
 block_type = Type("block")
@@ -98,8 +103,41 @@ def test_ndr_set():
     assert partitions[2] == [transitions[3]]
     print("Test NDRSet passed.")
 
+def test_integration():
+    seed = 0
+    print("Running integration tests (this may take a few minutes)")
+
+    # Test NDRBlocks
+    with nostdout():
+        training_env = NDRBlocksEnv()
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = NDRBlocksEnv()
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+        test_env.close()
+        assert np.sum(test_results) == 0.6
+    print("NDRBlocks integration test passed.")
+
+    # Test PybulletBlocksEnv
+    with nostdout():
+        training_env = PybulletBlocksEnv(use_gui=False)
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = PybulletBlocksEnv(use_gui=False)
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+        test_env.close()
+        assert np.sum(test_results) == 0.8
+    print("PybulletBlocksEnv integration test passed.")
+
+    print("Integration tests passed.")
+
 
 if __name__ == "__main__":
-    test_ndr()
-    test_ndr_set()
+    # test_ndr()
+    # test_ndr_set()
+    test_integration()
 

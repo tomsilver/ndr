@@ -9,6 +9,36 @@ import numpy as np
 import os
 import gym
 import imageio
+import sys
+import contextlib
+
+
+class DummyFile:
+    """Helper for nostdout().
+    """
+    def write(self, x):
+        """Dummy write method.
+        """
+        pass
+
+    def flush(self):
+        """Dummy flush method.
+        """
+        pass
+
+
+@contextlib.contextmanager
+def nostdout():
+    """Context for suppressing output. Usage:
+    import nostdout
+    with nostdout():
+        foo()
+    """
+    save_stdout = sys.stdout
+    sys.stdout = DummyFile()
+    yield
+    sys.stdout = save_stdout
+
 
 
 def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, render=True, 

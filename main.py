@@ -13,10 +13,10 @@ import os
 import numpy as np
 
 
-def collect_training_data(env, outfile, verbose=False, actions="all"):
+def collect_training_data(env, outfile=None, verbose=False, actions="all"):
     """Load or generate training data
     """
-    if os.path.exists(outfile):
+    if outfile is not None and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
             transition_dataset = pickle.load(f)
         num_transitions = sum(len(v) for v in transition_dataset.values())
@@ -29,9 +29,10 @@ def collect_training_data(env, outfile, verbose=False, actions="all"):
         num_transitions = sum(len(v) for v in transition_dataset.values())
         print("collected {} transitions for {} actions.".format(num_transitions, 
             len(transition_dataset)))
-        with open(outfile, 'wb') as f:
-            pickle.dump(transition_dataset, f)
-        print("Dumped dataset to {}.".format(outfile))
+        if outfile is not None:
+            with open(outfile, 'wb') as f:
+                pickle.dump(transition_dataset, f)
+            print("Dumped dataset to {}.".format(outfile))
     return transition_dataset
 
 def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_problem=1,
@@ -62,11 +63,8 @@ def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_pro
             if done:
                 obs, _ = env.reset()
             action = policy(obs)
-            print("  Obs:", obs)
-            print("  Act:", action)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
-            print("  Eff:", effects)
 
             # if action.predicate == "pickup":
             #     obj = action.variables[0]
@@ -115,10 +113,10 @@ def print_training_data(training_data):
             print()
 
 
-def learn_rule_set(training_data, outfile):
+def learn_rule_set(training_data, outfile=None):
     """Main learning step
     """
-    if os.path.exists(outfile):
+    if outfile is not None and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
             rules = pickle.load(f)
         num_rules = sum(len(v) for v in rules.values())
@@ -128,9 +126,10 @@ def learn_rule_set(training_data, outfile):
         rules = run_main_search(training_data)
         num_rules = sum(len(v) for v in rules.values())
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
-        with open(outfile, 'wb') as f:
-            pickle.dump(rules, f)
-        print("Dumped rules to {}.".format(outfile))
+        if outfile is not None:
+            with open(outfile, 'wb') as f:
+                pickle.dump(rules, f)
+            print("Dumped rules to {}.".format(outfile))
     print_rule_set(rules)
     return rules
 
@@ -140,10 +139,7 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
-def get_hardcoded_rules():
-    return NDRBlocksEnv().operators
-
-def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000, max_num_steps=25,
+def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=10000, max_num_steps=25,
                    num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
     if try_cache and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
@@ -166,9 +162,10 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000, ma
                     max_num_steps=max_num_steps, outdir=outdir)
                 seed_returns.append(returns)
             all_returns.append(seed_returns)
-        with open(outfile, 'wb') as f:
-            pickle.dump(all_returns, f)
-        print("Dumped test results to {}.".format(outfile))
+        if outfile is not None:
+            with open(outfile, 'wb') as f:
+                pickle.dump(all_returns, f)
+            print("Dumped test results to {}.".format(outfile))
     print("Average returns:", np.mean(all_returns))
     return all_returns
 
@@ -183,24 +180,14 @@ def main():
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
     training_env.close()
 
-    # rule_set_outfile = "data/{}_hardcoded_rule_set.pkl".format(training_env.__class__.__name__)
-    # hardcoded_rules = get_hardcoded_rules()
-    # rule_set = learn_rule_set(training_data, rule_set_outfile,
-    #     init_rule_set=hardcoded_rules)
-
-    # del training_data["puton"]
-    # del training_data["pickup"]
-    # del training_data["putontable"]
-
     # print_training_data(training_data)
-    # import ipdb; ipdb.set_trace()
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
     test_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
     test_env.close()
 
     print("Test results:")
