@@ -4,10 +4,10 @@ Based on the environment described in ZPK.
 """
 from .rendering.block_words import render as _render
 from .rendering.block_words import get_objects_from_obs as get_piles
-from ndr.structs import Predicate, LiteralConjunction, Type, Anti, ground_literal
 from ndr.ndrs import NDR, NDRSet
-from .spaces import LiteralSpace, LiteralSetSpace
-from ndr.inference import find_satisfying_assignments
+from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti, ground_literal
+from pddlgym.spaces import LiteralSpace, LiteralSetSpace
+from pddlgym.inference import find_satisfying_assignments
 
 
 import gym

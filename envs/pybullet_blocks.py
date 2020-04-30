@@ -2,8 +2,8 @@
 
 Based on the environment described in ZPK.
 """
-from ndr.structs import Predicate, LiteralConjunction, Type, Anti
-from .spaces import LiteralSpace, LiteralSetSpace
+from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti
+from pddlgym.spaces import LiteralSpace, LiteralSetSpace
 from ndr.utils import VideoWrapper
 
 from gym import utils, spaces

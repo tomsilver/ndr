@@ -1,5 +1,5 @@
-from parser import Operator, PDDLProblemParser, parse_plan_step
-from structs import LiteralConjunction, Predicate
+from pddlgym.parser import Operator, PDDLProblemParser, parse_plan_step
+from pddlgym.structs import LiteralConjunction, Predicate
 
 from collections import defaultdict
 import sys

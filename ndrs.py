@@ -1,5 +1,5 @@
-from ndr.structs import Predicate, ground_literal
-from ndr.inference import find_satisfying_assignments
+from pddlgym.structs import Predicate, ground_literal
+from pddlgym.inference import find_satisfying_assignments
 import numpy as np
 
 ### Noisy deictic rules

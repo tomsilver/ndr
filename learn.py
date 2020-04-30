@@ -1,7 +1,7 @@
 """Main file for NDR learning
 """
 from ndr.ndrs import NDR, NDRSet, NOISE_OUTCOME, MultipleOutcomesPossible
-from ndr.structs import Anti, ground_literal
+from pddlgym.structs import Anti, ground_literal
 from collections import defaultdict
 from termcolor import colored
 from scipy.optimize import minimize

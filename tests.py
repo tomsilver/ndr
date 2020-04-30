@@ -1,6 +1,6 @@
 from ndr.ndrs import *
 from ndr.learn import *
-from ndr.structs import Type, Anti
+from pddlgym.structs import Type, Anti
 from ndr.main import *
 from ndr.utils import nostdout
 

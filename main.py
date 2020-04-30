@@ -1,11 +1,13 @@
 """Full data gathering, learning and planning pipeline
 """
-from ndr.structs import Anti
-from envs.ndr_blocks import NDRBlocksEnv, noiseoutcome, ontable, clear
-from envs.pybullet_blocks import PybulletBlocksEnv
+from ndr.envs.ndr_blocks import NDRBlocksEnv, noiseoutcome
+from ndr.envs.pybullet_blocks import PybulletBlocksEnv
 from ndr.learn import run_main_search
 from ndr.planning import find_policy
 from ndr.utils import run_policy
+from pddlgym.structs import Anti
+import gym
+import pddlgym
 from collections import defaultdict
 from termcolor import colored
 import pickle
@@ -65,12 +67,6 @@ def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_pro
             action = policy(obs)
             next_obs, _, done, _ = env.step(action)
             effects = construct_effects(obs, next_obs)
-
-            # if action.predicate == "pickup":
-            #     obj = action.variables[0]
-            #     if ontable(obj) in obs and clear(obj) in obs:
-            #         import ipdb; ipdb.set_trace()
-
 
             null_effect = len(effects) == 0 or noiseoutcome() in effects
             keep_transition = (actions == "all" or action.predicate in actions) and \
@@ -174,7 +170,7 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
 def main():
     seed = 0
 
-    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = gym.make("PDDLEnvBlocks-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
@@ -185,7 +181,7 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
+    test_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
     test_env.close()
