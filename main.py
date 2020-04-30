@@ -177,7 +177,7 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
 def main():
     seed = 0
 
-    training_env = NDRBlocksEnv() #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
     training_data = collect_training_data(training_env, data_outfile, verbose=True)

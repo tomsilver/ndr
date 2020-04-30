@@ -113,7 +113,8 @@ class NDR:
         """Make sure that each object is uniquely referenced
         """
         sigma = self.find_substitutions(state, action)
-        assert sigma is not None
+        if sigma is None:
+            return False
         return set(objs).issubset(set(sigma.values()))
 
 
