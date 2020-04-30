@@ -40,16 +40,21 @@ def nostdout():
     sys.stdout = save_stdout
 
 
+def get_env_id(env):
+    try:
+        return env.spec.id
+    except AttributeError:
+        return env.__class__.__name__
 
 def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, render=True, 
                outdir='/tmp/', fps=3):
     if outdir is None:
-        outdir = "/tmp/{}".format(env.__class__.__name__)
+        outdir = "/tmp/{}".format(get_env_id(env))
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
     if render:
-        video_path = os.path.join(outdir, 'policy_{}_demo.gif'.format(env.__class__.__name__))
+        video_path = os.path.join(outdir, 'policy_{}_demo.gif'.format(get_env_id(env)))
         env = VideoWrapper(env, video_path, fps=fps)
 
     obs, debug_info = env.reset()

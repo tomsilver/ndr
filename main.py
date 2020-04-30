@@ -4,7 +4,7 @@ from ndr.envs.ndr_blocks import NDRBlocksEnv, noiseoutcome
 from ndr.envs.pybullet_blocks import PybulletBlocksEnv
 from ndr.learn import run_main_search
 from ndr.planning import find_policy
-from ndr.utils import run_policy
+from ndr.utils import run_policy, get_env_id
 from pddlgym.structs import Anti
 import gym
 import pddlgym
@@ -108,12 +108,6 @@ def print_training_data(training_data):
             print_transition(transition)
             print()
 
-def get_env_id(env):
-    try:
-        return env.spec.id
-    except AttributeError:
-        return env.__class__.__name__
-
 def learn_rule_set(training_data, outfile=None):
     """Main learning step
     """
@@ -154,7 +148,7 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
                 policy = find_policy("ff_replan", rule_set, env.action_space, 
                     env.observation_space)
                 total_returns = 0
-                outdir = '/tmp/ndrblocks{}_{}/'.format(seed, trial)
+                outdir = '/tmp'
                 if render:
                     os.makedirs(outdir, exist_ok=True)
                 returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
@@ -189,7 +183,9 @@ def main():
 
     test_env = gym.make("PDDLEnvHanoiTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True,
+        num_problems=10,
+        max_num_steps=10000)
     test_env.close()
 
     print("Test results:")
