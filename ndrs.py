@@ -127,6 +127,12 @@ class NDR:
         """
         return [t for t in transitions if self.covers_transition(t)]
 
+    def get_explained_transitions(self, transitions):
+        """Filter out only covered and referenced effect transitions
+        """
+        return [t for t in transitions if self.covers_transition(t) and \
+            self.effects_are_referenced(t)]
+
     def find_unique_matching_effect_index(self, transition):
         """Find the unique effect index that matches the transition.
 
@@ -172,6 +178,20 @@ class NDR:
         if sigma is None:
             return False
         return set(objs).issubset(set(sigma.values()))
+
+    def effects_are_referenced(self, transition):
+        """Make sure that each object is uniquely referenced
+        """
+        state, action, effects = transition
+        objs = set(o for lit in effects for o in lit.variables)
+        return self.objects_are_referenced(state, action, objs)
+
+    def predict_max(self, state, action):
+        """Make the most likely prediction
+        """
+        lifted_effects = self._effects[np.argmax(self._effect_probs)]
+        sigma = self.find_substitutions(state, action)
+        return { ground_literal(e, sigma) for e in lifted_effects }
 
 
 class NDRSet:
@@ -247,3 +267,10 @@ class NDRSet:
         ndrs = [ndr.copy() for ndr in self.ndrs]
         default_ndr = self.default_ndr.copy()
         return NDRSet(action, ndrs, default_ndr=default_ndr)
+
+    def predict_max(self, state, action):
+        """Make the most likely prediction
+        """
+        rule = self.find_rule((state, action, None))
+        return rule.predict_max(state, action)
+

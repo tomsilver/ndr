@@ -417,6 +417,12 @@ class TrimPreconditionsSearchOperator(SearchOperator):
     def __init__(self, rule, transitions):
         self._rule = rule
         self._transitions = transitions
+        self._covered_transitions = get_unique_transitions(
+            self._rule.get_explained_transitions(transitions)
+        )
+
+        # Comment this out b/c slow
+        assert self.check_if_valid(rule.preconditions)
 
     def get_score(self, preconditions):
         """Get a score for a possible set of preconditions
@@ -431,19 +437,25 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         induce_outcomes(rule_set.default_ndr, default_transitions)
         return score_action_rule_set(rule_set, self._transitions)
 
-    def check_if_valid(self, preconditions):
+    def check_if_valid(self, preconditions, verbose=False):
         # Covered by default rule
         if len(preconditions) == 0:
             return False
         # All objects in effect must be referenced
         rule = self._rule.copy()
         rule.preconditions = preconditions
-        for transition in self._transitions:
+        for transition in self._covered_transitions:
             if not rule.covers_transition(transition):
+                if verbose:
+                    print("Not valid because transition not covered:")
+                    print(transition)
                 return False
             state, action, effects = transition
             effected_objects = set(o for e in effects for o in e.variables)
             if not rule.objects_are_referenced(state, action, effected_objects):
+                if verbose:
+                    print("Not valid because objects not references:")
+                    print(effected_objects)
                 return False
         return True
 
@@ -451,6 +463,9 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         for i in range(len(remaining_preconditions)):
             child_preconditions = [remaining_preconditions[j] \
                 for j in range(len(remaining_preconditions)) if i != j]
+            # if len(self._rule.preconditions) >= 5:
+            #     if sum([p.predicate.name == "smaller" for p in child_preconditions]) == 1:
+            #         import ipdb; ipdb.set_trace()
             if self.check_if_valid(child_preconditions):
                 score = self.get_score(child_preconditions)
                 yield score, child_preconditions

@@ -15,7 +15,7 @@ import os
 import numpy as np
 
 
-def collect_training_data(env, outfile=None, verbose=False, actions="all"):
+def collect_training_data(env, outfile=None, verbose=False, **kwargs):
     """Load or generate training data
     """
     if outfile is not None and os.path.exists(outfile):
@@ -26,8 +26,7 @@ def collect_training_data(env, outfile=None, verbose=False, actions="all"):
             len(transition_dataset)))
     else:
         print("Collecting transition data... ", end='')
-        transition_dataset = collect_transition_dataset(env, verbose=verbose, 
-            actions=actions)
+        transition_dataset = collect_transition_dataset(env, verbose=verbose, **kwargs)
         num_transitions = sum(len(v) for v in transition_dataset.values())
         print("collected {} transitions for {} actions.".format(num_transitions, 
             len(transition_dataset)))
@@ -38,7 +37,8 @@ def collect_training_data(env, outfile=None, verbose=False, actions="all"):
     return transition_dataset
 
 def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_problem=1,
-                               max_transitions_per_action=500, policy=None, actions="all", verbose=False):
+                               max_transitions_per_action=500, policy=None, actions="all", 
+                               verbose=False):
     """Collect transitions (state, action, effect) for the given actions
     Make sure that no more than 50% of outcomes per action are null.
     """
@@ -108,6 +108,11 @@ def print_training_data(training_data):
             print_transition(transition)
             print()
 
+def get_env_id(env):
+    try:
+        return env.spec.id
+    except AttributeError:
+        return env.__class__.__name__
 
 def learn_rule_set(training_data, outfile=None):
     """Main learning step
@@ -168,19 +173,22 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
 def main():
     seed = 0
 
-    training_env = gym.make("PDDLEnvBlocks-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = gym.make("PDDLEnvHanoi-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
-    data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
-    training_data = collect_training_data(training_env, data_outfile, verbose=True)
+    data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))
+    training_data = collect_training_data(training_env, data_outfile, verbose=True,
+        max_num_trials=10000, #5000, 
+        num_transitions_per_problem=10,
+        max_transitions_per_action=1000,)
     training_env.close()
 
     # print_training_data(training_data)
 
-    rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
+    rule_set_outfile = "data/{}_rule_set.pkl".format(get_env_id(training_env))
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
-    test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
+    test_env = gym.make("PDDLEnvHanoiTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
+    test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
     test_env.close()
 

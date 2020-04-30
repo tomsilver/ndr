@@ -46,8 +46,22 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
     domain_name = "mydomain"
     planner = FastForwardPlanner(deterministic_operators, domain_name, action_space, observation_space)
 
+    # Only replan if outcome is not expected
+    expected_next_state = None
+    plan = []
+
+    def get_next_expected_state(state, action):
+        return ndr_operators[action.predicate].predict_max(state, action)
+
     # Given a state, replan and execute first section in plan
     def policy(state, goal):
+        nonlocal expected_next_state
+        nonlocal plan
+
+        if expected_next_state is not None and len(plan) > 0:
+            expected_next_state = get_next_expected_state(state, plan[0])
+            return plan.pop(0)
+
         # Get objects from the state
         objects = set()
         for lit in state:
@@ -68,7 +82,9 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
             # Default to random
             print("no plan found")
             return action_space.sample()
-        return plan[0]
+        # Updated expected next state
+        expected_next_state = get_next_expected_state(state, plan[0])
+        return plan.pop(0)
 
     return policy
 
