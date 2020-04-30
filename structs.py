@@ -423,27 +423,8 @@ def ground_literal(lifted_lit, assignments):
     return lifted_lit.predicate(*ground_vars)
 
 
-### Noisy deictic rules
-class NDR:
-    def __init__(self, action, preconditions, effects):
-        self.action = action
-        self.preconditions = preconditions
-        self.effects = effects
 
-    def __str__(self):
-        if self.effects is None:
-            effs_str = "None"
-        else:
-            effs_str = "\n        ".join(["{}: {}".format(p, eff) for p, eff in self.effects])
-        return """{}:
-  Pre: {}
-  Effs: {}""".format(self.action, self.preconditions, effs_str)
 
-    def __repr__(self):
-        return str(self)
 
-    def copy(self):
-        preconditions = LiteralConjunction([p for p in self.preconditions])
-        effects = [eff for eff in self.effects]
-        return NDR(self.action, preconditions, effects)
+
 
