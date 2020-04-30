@@ -4,7 +4,8 @@ Based on the environment described in ZPK.
 """
 from .rendering.block_words import render as _render
 from .rendering.block_words import get_objects_from_obs as get_piles
-from ndr.structs import Predicate, LiteralConjunction, Type, Anti, NDR, ground_literal
+from ndr.structs import Predicate, LiteralConjunction, Type, Anti, ground_literal
+from ndr.ndrs import NDR, NDRSet
 from .spaces import LiteralSpace, LiteralSetSpace
 from ndr.inference import find_satisfying_assignments
 
@@ -43,58 +44,63 @@ class NDRBlocksEnv(gym.Env):
         self._rng = np.random.RandomState(seed)
 
         self.operators = {
-            pickup : [
+            pickup : NDRSet(pickup("?x"), [
                 # If you try to pickup something while already holding something else,
                 # you'll probably drop the thing that you're holding
                 NDR(action=pickup("?x"), 
-                    preconditions={holding("?y")},
+                    preconditions=[holding("?y")],
+                    effect_probs=[0.6, 0.3, 0.1],
                     effects=[
-                        (0.6, {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")}),
-                        (0.3, set()),
-                        (0.1, {noiseoutcome()}),
+                        {Anti(holding("?y")), ontable("?y"), handempty(), clear("?y")},
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
                 # If you try pickup something clear while it's on something else, you
                 # probably will succeed
                 NDR(action=pickup("?x"), 
-                    preconditions={on("?x", "?y"), clear("?x"), handempty()},
+                    preconditions=[on("?x", "?y"), clear("?x"), handempty()],
+                    effect_probs = [0.7, 0.1, 0.2],
                     effects=[
-                        (0.7, {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
-                               Anti(handempty()), Anti(clear("?x"))}),
-                        (0.1, set()),
-                        (0.2, {noiseoutcome()}),
+                        {holding("?x"), Anti(on("?x", "?y")), clear("?y"), 
+                               Anti(handempty()), Anti(clear("?x"))},
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
                 # If you try pickup something clear while it's on the table, you
                 # probably will succeed
                 NDR(action=pickup("?x"), 
-                    preconditions={ontable("?x"), clear("?x"), handempty()},
+                    preconditions=[ontable("?x"), clear("?x"), handempty()],
+                    effect_probs=[0.8, 0.1, 0.1],
                     effects=[
-                        (0.8, {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
-                               Anti(clear("?x"))}),
-                        (0.1, set()),
-                        (0.1, {noiseoutcome()}),
+                        {holding("?x"), Anti(ontable("?x")), Anti(handempty()), 
+                               Anti(clear("?x"))},
+                        set(),
+                        {noiseoutcome()},
                     ],
-                ),
+                )],
                 # Default rule
-                NDR(action=pickup("?x"), 
-                    preconditions={},
+                default_ndr=NDR(action=pickup("?x"), 
+                    preconditions=[],
+                    effect_probs=[0.9, 0.1],
                     effects=[
-                        (0.9, set()),
-                        (0.1, {noiseoutcome()}),
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
-            ],
-            puton : [
+            ),
+            puton : NDRSet(puton("?x"), [
                 # If you try to puton something that is clear, it
                 # probably will succeed
                 NDR(action=puton("?x"), 
-                    preconditions={clear("?x"), holding("?y")},
+                    preconditions=[clear("?x"), holding("?y")],
+                    effect_probs=[0.8, 0.1, 0.1],
                     effects=[
-                        (0.8, {Anti(holding("?y")), on("?y", "?x"), handempty(), 
-                               Anti(clear("?x")), clear("?y")}),
-                        (0.1, set()),
-                        (0.1, {noiseoutcome()}),
+                        {Anti(holding("?y")), on("?y", "?x"), handempty(), 
+                               Anti(clear("?x")), clear("?y")},
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
                 # Removing this case because I don't know how to handle derived predicates like this
@@ -109,34 +115,38 @@ class NDRBlocksEnv(gym.Env):
                 #     ],
                 # ),
                 # Default rule
-                NDR(action=puton("?x"), 
-                    preconditions={},
+                ],
+                default_ndr=NDR(action=puton("?x"), 
+                    preconditions=[],
+                    effect_probs=[0.9, 0.1],
                     effects=[
-                        (0.9, set()),
-                        (0.1, {noiseoutcome()}),
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
-            ],
-            putontable : [
+            ),
+            putontable : NDRSet(putontable(), [
                 # If you try to putontable and you're holding something,
                 # it will probably succeed
                 NDR(action=putontable(), 
-                    preconditions={holding("?x")},
+                    preconditions=[holding("?x")],
+                    effect_probs=[0.8, 0.1, 0.1],
                     effects=[
-                        (0.8, {Anti(holding("?x")), ontable("?x"), clear("?x"), handempty()}),
-                        (0.1, set()),
-                        (0.1, {noiseoutcome()}),
+                        {Anti(holding("?x")), ontable("?x"), clear("?x"), handempty()},
+                        set(),
+                        {noiseoutcome()},
                     ],
-                ),
+                )],
                 # Default rule
-                NDR(action=putontable(), 
-                    preconditions={},
+                default_ndr=NDR(action=putontable(), 
+                    preconditions=[],
+                    effect_probs=[0.9, 0.1],
                     effects=[
-                        (0.9, set()),
-                        (0.1, {noiseoutcome()}),
+                        set(),
+                        {noiseoutcome()},
                     ],
                 ),
-            ],
+            ),
         }
 
         # (initial state, goal)
@@ -204,7 +214,8 @@ class NDRBlocksEnv(gym.Env):
             # Successful rule application
             if len(assignments) == 1:
                 # Sample an effect set
-                probs, effs = zip(*ndr.effects)
+                probs = ndr.effect_probs
+                effs = ndr.effects
                 idx = rng.choice(len(probs), p=probs)
                 selected_effs = effs[idx]
                 # Ground it

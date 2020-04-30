@@ -115,7 +115,7 @@ def print_training_data(training_data):
             print()
 
 
-def learn_rule_set(training_data, outfile, init_rule_set=None):
+def learn_rule_set(training_data, outfile):
     """Main learning step
     """
     if os.path.exists(outfile):
@@ -125,7 +125,7 @@ def learn_rule_set(training_data, outfile, init_rule_set=None):
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
     else:
         print("Learning rules... ")
-        rules = run_main_search(training_data, init_rule_set=init_rule_set)
+        rules = run_main_search(training_data)
         num_rules = sum(len(v) for v in rules.values())
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
         with open(outfile, 'wb') as f:
@@ -177,7 +177,7 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
 def main():
     seed = 0
 
-    training_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = NDRBlocksEnv() #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(training_env.__class__.__name__)
     training_data = collect_training_data(training_env, data_outfile, verbose=True)
@@ -195,7 +195,7 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(training_env.__class__.__name__)
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4') # NDRBlocksEnv
+    test_env = NDRBlocksEnv() #PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
     test_env.close()

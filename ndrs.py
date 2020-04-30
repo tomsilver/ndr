@@ -88,7 +88,11 @@ class NDR:
         sigma = self.find_substitutions(state, action)
         assert sigma is not None, "Rule assumed to cover transition"
         inverse_sigma = {v : k for k, v in sigma.items()}
-        lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
+        try:
+            lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
+        except KeyError:
+            # Some object in the effects was not named in the rule
+            lifted_effects = {NOISE_OUTCOME}
         selected_outcome_idx = None
         noise_outcome_idx = None
         for i, outcome in enumerate(self.effects):
@@ -104,6 +108,13 @@ class NDR:
             return selected_outcome_idx
         assert noise_outcome_idx is not None
         return noise_outcome_idx
+
+    def objects_are_referenced(self, state, action, objs):
+        """Make sure that each object is uniquely referenced
+        """
+        sigma = self.find_substitutions(state, action)
+        assert sigma is not None
+        return set(objs).issubset(set(sigma.values()))
 
 
 class NDRSet:
@@ -132,6 +143,10 @@ class NDRSet:
             assert len(ndr.preconditions) > 0
             assert ndr.action == action
         assert self.default_ndr.action == action
+
+    def __str__(self):
+        s = "\n".join([str(r) for r in self])
+        return s
 
     def __iter__(self):
         return iter(self.ndrs + [self.default_ndr])

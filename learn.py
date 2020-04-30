@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 20. # Weight on rule set size penalty
+ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
@@ -252,7 +252,11 @@ def learn_params_analytically(rule, covered_transitions):
         # Throws a caught error if there is no unique matching effect
         idx = rule.find_unique_matching_effect_index(transition)
         effect_counts[idx] += 1
-    rule.effect_probs = np.array(effect_counts) / np.sum(effect_counts)
+    denom =  np.sum(effect_counts)
+    if denom == 0:
+        rule.effect_probs = np.ones(len(effect_counts), dtype=np.float32) / len(effect_counts)
+    else:
+        rule.effect_probs = np.array(effect_counts) / np.sum(effect_counts)
 
 
 ## Induce outcomes
@@ -270,11 +274,12 @@ class InduceOutcomesSearchOperator(SearchOperator):
         for new_effects in self.get_child_effects(effects):
             new_probs = self.get_probs(new_effects)
             score = self.get_score(new_probs, new_effects)
-            yield (new_probs, new_effects)
+            yield score, (new_probs, new_effects)
 
     def get_probs(self, effects):
         self._rule_copy.effects = effects
         learn_parameters(self._rule_copy, self._covered_transitions)
+        return self._rule_copy.effect_probs.copy()
 
     def get_score(self, probs, effects):
         self._rule_copy.effect_probs = probs
@@ -294,7 +299,7 @@ class InduceOutcomesAddOperator(InduceOutcomesSearchOperator):
         for i in range(len(effects)-1):
             if NOISE_OUTCOME in effects[i]:
                 continue
-            for j in range(i+1, len(efects)):
+            for j in range(i+1, len(effects)):
                 if NOISE_OUTCOME in effects[j]:
                     continue
                 # Check for contradiction
@@ -324,7 +329,7 @@ class InduceOutcomesAddOperator(InduceOutcomesSearchOperator):
 class InduceOutcomesRemoveOperator(InduceOutcomesSearchOperator):
     """Drop an outcome (not the noise one though!)
     """
-    def get_child_effects(effects):
+    def get_child_effects(self, effects):
         for i, effect_i in enumerate(effects):
             if NOISE_OUTCOME in effect_i:
                 continue
@@ -351,7 +356,12 @@ def get_all_possible_outcomes(rule, covered_transitions):
             sigma = rule.find_substitutions(state, action)
             assert sigma is not None
             inverse_sigma = {v : k for k, v in sigma.items()}
-            lifted_effects = {ground_literal(e, inverse_sigma) for e in effects}
+            # If there is some object in the effects that does not apepar in
+            # the rule, this outcome is noise
+            try:
+                lifted_effects = {ground_literal(e, inverse_sigma) for e in effects}
+            except KeyError:
+                continue
             all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     return all_possible_outcomes
 
@@ -383,11 +393,11 @@ def create_default_rule_set(action, transitions_for_action):
     variable_name_generator = iter_variable_names()
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
-    ndr = NDR(action=lifted_action, preconditions=LiteralConjunction([]), effects=None)
-    induce_outcomes(ndr, transitions_for_action, rule_is_default=True,
-        action_rule_set=[])
-    score = score_action_rule_set([ndr], transitions_for_action)
-    return score, [ndr]
+    ndr = NDR(action=lifted_action, preconditions=[], effect_probs=[], effects=[])
+    induce_outcomes(ndr, transitions_for_action)
+    action_rule_set = NDRSet(lifted_action, [], default_ndr=ndr)
+    score = score_action_rule_set(action_rule_set, transitions_for_action)
+    return score, action_rule_set
 
 
 class TrimPreconditionsSearchOperator(SearchOperator):
@@ -405,17 +415,34 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         rule_set = NDRSet(rule.action, [rule])
         # Induce outcomes for both rules
         rule_transitions, default_transitions = \
-            rule_set.partition_transitions(self.transitions)
+            rule_set.partition_transitions(self._transitions)
         induce_outcomes(rule, rule_transitions)
         induce_outcomes(rule_set.default_ndr, default_transitions)
-        return score_action_rule_set(rule_set, self.transitions)
+        return score_action_rule_set(rule_set, self._transitions)
+
+    def check_if_valid(self, preconditions):
+        # Covered by default rule
+        if len(preconditions) == 0:
+            return False
+        # All objects in effect must be referenced
+        rule = self._rule.copy()
+        rule.preconditions = preconditions
+        for transition in self._transitions:
+            if not rule.covers_transition(transition):
+                return False
+            state, action, effects = transition
+            effected_objects = set(o for e in effects for o in e.variables)
+            if not rule.objects_are_referenced(state, action, effected_objects):
+                return False
+        return True
 
     def get_children(self, remaining_preconditions):
         for i in range(len(remaining_preconditions)):
             child_preconditions = [remaining_preconditions[j] \
                 for j in range(len(remaining_preconditions)) if i != j]
-            score = self.get_score(child_preconditions)
-            yield score, child_preconditions
+            if self.check_if_valid(child_preconditions):
+                score = self.get_score(child_preconditions)
+                yield score, child_preconditions
 
 
 class ExplainExamples(SearchOperator):
@@ -451,7 +478,7 @@ class ExplainExamples(SearchOperator):
         sigma = dict(zip(variables, a.variables))
         sigma_inverse = {v : k for k, v in sigma.items()}
         # Set r's action
-        new_rule.action = action(*[sigma_inverse[val] for val in a.variables])
+        new_rule.action = self.action(*[sigma_inverse[val] for val in a.variables])
         # Set r's context to be the conjunction literals that can be formed using
         # the variables
         for lit in s:
@@ -484,7 +511,7 @@ class ExplainExamples(SearchOperator):
             # Check if d uniquely refers to c in s
             new_rule_copy = new_rule.copy()
             new_rule_copy.preconditions.extend(d)
-            if new_rule_copy.covers_transition(transition):
+            if new_rule_copy.objects_are_referenced(s, a, [c]):
                 new_rule.preconditions.extend(d)
         # Step 1.3: Complete the rule
         # Call InduceOutComes to create the rule's outcomes.
@@ -501,7 +528,7 @@ class ExplainExamples(SearchOperator):
         # Greedily trim literals from r, ensuring that r still covers (s, a, s')
         # and filling in the outcomes using InduceOutcomes until R's score stops improving
         op = TrimPreconditionsSearchOperator(rule, self.transitions_for_action)
-        init_state = list(new_rule.preconditions)
+        init_state = list(rule.preconditions)
         init_score = op.get_score(init_state)
         best_preconditions = run_greedy_search([op], init_state, init_score)
         rule.preconditions = best_preconditions
@@ -538,9 +565,9 @@ class ExplainExamples(SearchOperator):
 
         for i, transition in enumerate(transitions):
             if not DEBUG:
-                print("Running explain examples for action {} {}/{}".format(action, i, 
-                    len(unique_transitions)), end='\r')
-                if i == len(unique_transitions) -1:
+                print("Running explain examples for action {} {}/{}".format(self.action, i, 
+                    len(transitions)), end='\r')
+                if i == len(transitions) -1:
                     print()
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
@@ -650,7 +677,7 @@ class ExplainExamples(SearchOperator):
 def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
-    explain_examples = create_explain_examples_operator(action, transitions_for_action)
+    explain_examples = ExplainExamples(action, transitions_for_action)
     # drop_rules = create_drop_rules_operator(action, transitions_for_action)
     # drop_lits = create_drop_lits_operator(action, transitions_for_action)
     # add_lits = create_add_lits_operator(action, transitions_for_action)
