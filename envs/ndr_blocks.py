@@ -169,7 +169,18 @@ class NDRBlocksEnv(gym.Env):
             ({ ontable("a"), ontable("b"), 
                clear("a"), clear("b"), holding("c") },
                LiteralConjunction([on("c", "a"), on("a", "b")])),
-
+            ({ on("a", "b"), ontable("b"), clear("a"), holding("c") },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("a", "c"), ontable("c"), clear("a"), holding("b") },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("b", "a"), ontable("a"), clear("b"), holding("c") },
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("a", "b"), ontable("b"), clear("a"), ontable("c"), clear("c"), handempty()},
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("a", "c"), ontable("c"), clear("a"), ontable("b"), clear("b"), handempty()},
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
+            ({ on("b", "a"), ontable("a"), clear("b"), ontable("c"), clear("c"), handempty()},
+               LiteralConjunction([on("c", "a"), on("a", "b")])),
         ]
         self.num_problems = len(self.problems)
         self._problem_idx = None
