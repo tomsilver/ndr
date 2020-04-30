@@ -21,10 +21,10 @@ class NDR:
     effects : [Literal]
     """
     def __init__(self, action, preconditions, effect_probs, effects):
-        self.action = action
-        self.preconditions = preconditions
-        self.effect_probs = effect_probs
-        self.effects = effects
+        self._action = action
+        self._preconditions = preconditions
+        self._effect_probs = effect_probs
+        self._effects = effects
 
         assert isinstance(preconditions, list)
         assert len(effect_probs) == len(effects)
@@ -32,6 +32,9 @@ class NDR:
         # Exactly one effect should have the noise outcome
         if len(effects) > 0:
             assert sum([NOISE_OUTCOME in e for e in effects]) == 1
+
+        self._reset_precondition_cache()
+        self._reset_effect_cache()
 
     def __str__(self):
         effs_str = "\n        ".join(["{}: {}".format(p, eff) \
@@ -42,6 +45,49 @@ class NDR:
 
     def __repr__(self):
         return str(self)
+
+    @property
+    def action(self):
+        return self._action
+    
+    @property
+    def preconditions(self):
+        return self._preconditions
+
+    @property
+    def effect_probs(self):
+        return self._effect_probs
+
+    @property
+    def effects(self):
+        return self._effects
+
+    @action.setter
+    def action(self, x):
+        self._reset_precondition_cache()
+        self._action = x
+
+    @preconditions.setter
+    def preconditions(self, x):
+        self._reset_precondition_cache()
+        self._preconditions = x
+
+    @effect_probs.setter
+    def effect_probs(self, x):
+        self._reset_effect_cache()
+        self._effect_probs = x
+
+    @effects.setter
+    def effects(self, x):
+        self._reset_effect_cache()
+        self._effects = x
+
+    def _reset_precondition_cache(self):
+        self._precondition_cache = {}
+        self._reset_effect_cache()
+
+    def _reset_effect_cache(self):
+        self._effect_cache = {}
 
     def copy(self):
         """Create a new NDR. Literals are assumed immutable.
@@ -56,13 +102,18 @@ class NDR:
         """Find a mapping from variables to objects in the state
         and action. If non-unique or none, return None.
         """
-        kb = state | { action }
-        assert action.predicate == self.action.predicate
-        conds = [self.action] + list(self.preconditions)
-        assignments = find_satisfying_assignments(kb, conds)
-        if len(assignments) != 1:
-            return None
-        return assignments[0]
+        cache_key = hash((frozenset(state), action))
+        if cache_key not in self._precondition_cache:
+            kb = state | { action }
+            assert action.predicate == self.action.predicate
+            conds = [self.action] + list(self.preconditions)
+            assignments = find_satisfying_assignments(kb, conds)
+            if len(assignments) != 1:
+                result = None
+            else:
+                result = assignments[0]
+            self._precondition_cache[cache_key] = result
+        return self._precondition_cache[cache_key]
 
     def covers_transition(self, transition):
         """Check whether the action and preconditions cover the transition
@@ -85,29 +136,34 @@ class NDR:
         Used for quickly learning effect probabilities.
         """
         state, action, effects = transition
-        sigma = self.find_substitutions(state, action)
-        assert sigma is not None, "Rule assumed to cover transition"
-        inverse_sigma = {v : k for k, v in sigma.items()}
-        try:
-            lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
-        except KeyError:
-            # Some object in the effects was not named in the rule
-            lifted_effects = {NOISE_OUTCOME}
-        selected_outcome_idx = None
-        noise_outcome_idx = None
-        for i, outcome in enumerate(self.effects):
-            if NOISE_OUTCOME in outcome:
-                assert noise_outcome_idx is None
-                noise_outcome_idx = i
+        cache_key = hash((frozenset(state), action, frozenset(effects)))
+        if cache_key not in self._effect_cache:
+            sigma = self.find_substitutions(state, action)
+            assert sigma is not None, "Rule assumed to cover transition"
+            inverse_sigma = {v : k for k, v in sigma.items()}
+            try:
+                lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
+            except KeyError:
+                # Some object in the effects was not named in the rule
+                lifted_effects = {NOISE_OUTCOME}
+            selected_outcome_idx = None
+            noise_outcome_idx = None
+            for i, outcome in enumerate(self.effects):
+                if NOISE_OUTCOME in outcome:
+                    assert noise_outcome_idx is None
+                    noise_outcome_idx = i
+                else:
+                    if sorted(lifted_effects) == sorted(outcome):
+                        if selected_outcome_idx is not None:
+                            raise MultipleOutcomesPossible()
+                        selected_outcome_idx = i
+            if selected_outcome_idx is not None:
+                result = selected_outcome_idx
             else:
-                if sorted(lifted_effects) == sorted(outcome):
-                    if selected_outcome_idx is not None:
-                        raise MultipleOutcomesPossible()
-                    selected_outcome_idx = i
-        if selected_outcome_idx is not None:
-            return selected_outcome_idx
-        assert noise_outcome_idx is not None
-        return noise_outcome_idx
+                assert noise_outcome_idx is not None
+                result = noise_outcome_idx
+            self._effect_cache[cache_key] = result
+        return self._effect_cache[cache_key]
 
     def objects_are_referenced(self, state, action, objs):
         """Make sure that each object is uniquely referenced
