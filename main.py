@@ -143,7 +143,7 @@ def print_rule_set(rule_set):
 def get_hardcoded_rules():
     return NDRBlocksEnv().operators
 
-def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
+def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000, max_num_steps=25,
                    num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
     if try_cache and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
@@ -163,7 +163,7 @@ def run_test_suite(rule_set, env, outfile, num_problems=10, seed_start=10000,
                 if render:
                     os.makedirs(outdir, exist_ok=True)
                 returns = run_policy(env, policy, verbose=verbose, render=render, check_reward=False, 
-                    outdir=outdir)
+                    max_num_steps=max_num_steps, outdir=outdir)
                 seed_returns.append(returns)
             all_returns.append(seed_returns)
         with open(outfile, 'wb') as f:
@@ -200,7 +200,7 @@ def main():
 
     test_env = PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(test_env.__class__.__name__)
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True)
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True)
     test_env.close()
 
     print("Test results:")
