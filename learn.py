@@ -24,7 +24,7 @@ class SearchOperator:
         raise NotImplementedError()
 
 
-def run_greedy_search(search_operators, init_state, init_score,
+def run_greedy_search(search_operators, init_state, init_score, greedy_break=False,
                       max_node_expansions=1000, rng=None, verbose=False):
     """Greedy search
     """
@@ -52,6 +52,8 @@ def run_greedy_search(search_operators, init_state, init_score,
                     if verbose:
                         print("New best score:", best_score)
                         print("New best state:", state)
+                    if greedy_break:
+                        break
         if not found_improvement:
             break
 
@@ -138,18 +140,27 @@ def get_pen(rule):
 def get_transition_likelihood(transition, rule, p_min=P_MIN):
     """Calculate the likelihood of a transition for a rule that covers it
     """
-    state, action, effects = transition
-    sigma = rule.find_substitutions(state, action)
-    assert sigma is not None, "Rule assumed to cover transition"
-    transition_likelihood = 0.
-    for prob, outcome in zip(rule.effect_probs, rule.effects):
-        if NOISE_OUTCOME in outcome:
-            # c.f. equation 3 in paper
-            transition_likelihood += p_min * prob
-        else:
-            grounded_outcome = {ground_literal(lit, sigma) for lit in outcome}
-            if sorted(grounded_outcome) == sorted(effects):
-                transition_likelihood += prob
+    try:
+        effect_idx = rule.find_unique_matching_effect_index(transition)
+        prob, outcome = rule.effect_probs[effect_idx], rule.effects[effect_idx]
+        # Noise outcome
+        transition_likelihood = p_min * prob
+        # Other outcome
+        if NOISE_OUTCOME not in outcome:
+            transition_likelihood += prob
+    except MultipleOutcomesPossible:
+        state, action, effects = transition
+        sigma = rule.find_substitutions(state, action)
+        assert sigma is not None, "Rule assumed to cover transition"
+        transition_likelihood = 0.
+        for prob, outcome in zip(rule.effect_probs, rule.effects):
+            if NOISE_OUTCOME in outcome:
+                # c.f. equation 3 in paper
+                transition_likelihood += p_min * prob
+            else:
+                grounded_outcome = {ground_literal(lit, sigma) for lit in outcome}
+                if sorted(grounded_outcome) == sorted(effects):
+                    transition_likelihood += prob
     return transition_likelihood
 
 def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, alpha=ALPHA):
@@ -530,7 +541,8 @@ class ExplainExamples(SearchOperator):
         op = TrimPreconditionsSearchOperator(rule, self.transitions_for_action)
         init_state = list(rule.preconditions)
         init_score = op.get_score(init_state)
-        best_preconditions = run_greedy_search([op], init_state, init_score)
+        best_preconditions = run_greedy_search([op], init_state, init_score,
+            greedy_break=True)
         rule.preconditions = best_preconditions
         if DEBUG: import ipdb; ipdb.set_trace()
 

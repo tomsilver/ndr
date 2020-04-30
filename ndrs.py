@@ -74,7 +74,7 @@ class NDR:
 
     @effect_probs.setter
     def effect_probs(self, x):
-        self._reset_effect_cache()
+        # No need to reset any caches
         self._effect_probs = x
 
     @effects.setter
