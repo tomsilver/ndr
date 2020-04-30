@@ -145,6 +145,7 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
             seed_returns = []
             for trial in range(num_trials_per_problem):
                 env.seed(seed)
+                env.reset()
                 policy = find_policy("ff_replan", rule_set, env.action_space, 
                     env.observation_space)
                 total_returns = 0
@@ -167,13 +168,13 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
 def main():
     seed = 0
 
-    training_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = PybulletBlocksEnv(use_gui=False) #gym.make("PDDLEnvBlocksTest-v0") #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))
     training_data = collect_training_data(training_env, data_outfile, verbose=True,
-        max_num_trials=10000, #5000, 
-        num_transitions_per_problem=10,
-        max_transitions_per_action=1000,)
+        max_num_trials=5000, #5000, 
+        num_transitions_per_problem=1,
+        max_transitions_per_action=500,)
     training_env.close()
 
     # print_training_data(training_data)
@@ -181,11 +182,11 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(get_env_id(training_env))
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
+    test_env = PybulletBlocksEnv(use_gui=False) #gym.make("PDDLEnvBlocksTest-v0") #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
-    test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True,
+    test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True,
         num_problems=10,
-        max_num_steps=10000)
+        max_num_steps=25)
     test_env.close()
 
     print("Test results:")

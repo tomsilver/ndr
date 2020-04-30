@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 20. # Weight on rule set size penalty
+ALPHA = 10. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
@@ -422,7 +422,7 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         )
 
         # Comment this out b/c slow
-        # assert self.check_if_valid(rule.preconditions)
+        assert self.check_if_valid(rule.preconditions)
 
     def get_score(self, preconditions):
         """Get a score for a possible set of preconditions
@@ -488,11 +488,9 @@ class ExplainExamples(SearchOperator):
                 default_transitions.append(transition)
         return default_transitions
 
-    def _initialize_new_rule(self, transition):
-        """Step 1: Create a new rule
-        """
-        s, a, effs = transition
-        new_rule = NDR(action=None, preconditions=[], effect_probs=[], effects=[])
+    @staticmethod
+    def init_new_rule_action(transition):
+        a = transition[1]
         # Step 1.1: Create an action and context for r
         # Create new variables to represent the arguments of a
         variable_name_generator = iter_variable_names()
@@ -501,13 +499,26 @@ class ExplainExamples(SearchOperator):
         sigma = dict(zip(variables, a.variables))
         sigma_inverse = {v : k for k, v in sigma.items()}
         # Set r's action
-        new_rule.action = self.action(*[sigma_inverse[val] for val in a.variables])
+        return a.predicate(*[sigma_inverse[val] for val in a.variables]), \
+            variable_name_generator
+
+    @staticmethod
+    def get_overfitting_preconditions(transition):
+        """Helper for Step 1. Also used by AddLits.
+        """
+        s, a, effs = transition
+        # Helper for checks
+        new_rule = NDR(action=None, preconditions=[], effect_probs=[], effects=[])
+        new_rule.action, variable_name_generator = ExplainExamples.init_new_rule_action(transition)
+        sigma_inverse = dict(zip(a.variables, new_rule.action.variables))
+        # Build up overfitting preconds
+        overfitting_preconditions = []
         # Set r's context to be the conjunction literals that can be formed using
         # the variables
         for lit in s:
             if all(val in sigma_inverse for val in lit.variables):
                 lifted_lit = ground_literal(lit, sigma_inverse)
-                new_rule.preconditions.append(lifted_lit)
+                overfitting_preconditions.append(lifted_lit)
         if DEBUG: import ipdb; ipdb.set_trace()
         # Step 1.2: Create deictic references for r
         # Collect the set of constants whose properties changed from s to s' but 
@@ -520,7 +531,6 @@ class ExplainExamples(SearchOperator):
         for c in sorted(changed_objects):
             # Create a new variable and extend sigma to map v to c
             new_variable = next(variable_name_generator)
-            sigma[new_variable] = c
             assert c not in sigma_inverse
             sigma_inverse[c] = new_variable
             # Create the conjunction of literals containing c, but lifted
@@ -535,8 +545,18 @@ class ExplainExamples(SearchOperator):
             new_rule_copy = new_rule.copy()
             new_rule_copy.preconditions.extend(d)
             if new_rule_copy.objects_are_referenced(s, a, [c]):
-                new_rule.preconditions.extend(d)
-        # Step 1.3: Complete the rule
+                overfitting_preconditions.extend(d)
+        return overfitting_preconditions
+
+    def _initialize_new_rule(self, transition):
+        """Step 1: Create a new rule
+        """
+        new_rule = NDR(action=None, preconditions=[], effect_probs=[], effects=[])
+        # Init the action
+        new_rule.action, _ = self.init_new_rule_action(transition)
+        # Create preconditions
+        new_rule.preconditions = self.get_overfitting_preconditions(transition)
+        # Complete the rule
         # Call InduceOutComes to create the rule's outcomes.
         covered_transitions = new_rule.get_covered_transitions(self.transitions_for_action)
         induce_outcomes(new_rule, covered_transitions)
@@ -602,6 +622,9 @@ class ExplainExamples(SearchOperator):
             # If preconditions are empty, don't enumerate; this should be covered by the default rule
             if len(new_rule.preconditions) == 0:
                 continue
+            # Filter out if not all effects explained
+            if not new_rule.effects_are_referenced(transition):
+                continue
             # Step 2: Trim literals from r
             self._trim_preconditions(new_rule)
             # If preconditions are empty, don't enumerate; this should be covered by the default rule
@@ -648,9 +671,46 @@ class ExplainExamples(SearchOperator):
 #                 yield score, remaining_rules
 #     return drop_lits
 
+class AddLits(SearchOperator):
+    """Search operator that adds one lit per rule from the set
+    """
+
+    def __init__(self, action, transitions_for_action):
+        self.action = action
+        self.transitions_for_action = transitions_for_action
+        self._all_possible_additions = self._get_all_possible_additions(transitions_for_action)
+
+    def _get_all_possible_additions(self, transitions_for_action):
+        # Get all possible lits to add
+        all_possible_additions = set()
+        unique_transitions = get_unique_transitions(transitions_for_action)
+
+        for transition in unique_transitions:
+            preconds = ExplainExamples.get_overfitting_preconditions(transition)
+            all_possible_additions.update(preconds)
+        return all_possible_additions
+
+    def get_children(self, action_rule_set):
+        print("Running add lits")
+        for i in range(len(action_rule_set.ndrs)):
+            for new_lit in self._all_possible_additions:
+                new_rule_set = action_rule_set.copy()
+                new_ndr = new_rule_set.ndrs[i]
+                # No use adding a lit that's already there
+                if new_lit in new_ndr.preconditions:
+                    continue
+                new_ndr.preconditions.append(new_lit)
+                partitions = new_rule_set.partition_transitions(self.transitions_for_action)
+                # Induce new outcomes for modified ndr
+                induce_outcomes(new_ndr, partitions[i])
+                # Update default rule parameters
+                learn_parameters(new_rule_set.default_ndr, partitions[-1])
+                score = score_action_rule_set(new_rule_set, self.transitions_for_action)
+                yield score, new_rule_set
+
 # def create_add_lits_operator(action, transitions_for_action):
-#     """Search operator that adds one lit per rule from the set
-#     """
+    """Search operator that adds one lit per rule from the set
+    """
 #     # Get all possible lits to add
 #     all_possible_additions = set()
 #     unique_transitions = get_unique_transitions(transitions_for_action)
@@ -707,13 +767,13 @@ def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
-    # drop_rules = create_drop_rules_operator(action, transitions_for_action)
-    # drop_lits = create_drop_lits_operator(action, transitions_for_action)
-    # add_lits = create_add_lits_operator(action, transitions_for_action)
+    add_lits = AddLits(action, transitions_for_action)
+    # drop_rules = DropRules(action, transitions_for_action)
+    # drop_lits = DropLits(action, transitions_for_action)
 
     return [
         explain_examples, 
-        # add_lits, 
+        add_lits, 
         # drop_rules,
         # drop_lits
     ]

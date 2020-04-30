@@ -115,16 +115,20 @@ def test_integration():
         training_env.close()
         rule_set = learn_rule_set(training_data)
         test_env = NDRBlocksEnv()
-        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+            num_problems=100)
         test_env.close()
-        assert np.sum(test_results) == 6.0
+        assert 40 < np.sum(test_results) < 60
     print("NDRBlocks integration test passed.")
 
     # Test PybulletBlocksEnv
     with nostdout():
         training_env = PybulletBlocksEnv(use_gui=False)
         training_env.seed(seed)
-        training_data = collect_training_data(training_env)
+        training_data = collect_training_data(training_env,
+            max_num_trials=5000,
+            num_transitions_per_problem=1,
+            max_transitions_per_action=500)
         training_env.close()
         rule_set = learn_rule_set(training_data)
         test_env = PybulletBlocksEnv(use_gui=False)
