@@ -58,7 +58,7 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
         nonlocal expected_next_state
         nonlocal plan
 
-        if expected_next_state is not None and len(plan) > 0:
+        if len(plan) > 0:
             expected_next_state = get_next_expected_state(state, plan[0])
             return plan.pop(0)
 

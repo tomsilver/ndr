@@ -134,7 +134,7 @@ def print_rule_set(rule_set):
         for rule in rule_set[action_predicate]:
             print(rule)
 
-def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=10000, max_num_steps=25,
+def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=10000, max_num_steps=50,
                    num_trials_per_problem=1, render=True, verbose=False, try_cache=False):
     if try_cache and os.path.exists(outfile):
         with open(outfile, 'rb') as f:
@@ -167,7 +167,7 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
 def main():
     seed = 0
 
-    training_env = gym.make("PDDLEnvHanoi-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
+    training_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4') #NDRBlocksEnv()
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))
     training_data = collect_training_data(training_env, data_outfile, verbose=True,
@@ -181,7 +181,7 @@ def main():
     rule_set_outfile = "data/{}_rule_set.pkl".format(get_env_id(training_env))
     rule_set = learn_rule_set(training_data, rule_set_outfile)
 
-    test_env = gym.make("PDDLEnvHanoiTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
+    test_env = gym.make("PDDLEnvBlocksTest-v0") #PybulletBlocksEnv(use_gui=False) #record_low_level_video=True, video_out='/tmp/lowlevel_test.mp4')
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=True, verbose=True,
         num_problems=10,

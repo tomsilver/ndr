@@ -422,7 +422,7 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         )
 
         # Comment this out b/c slow
-        assert self.check_if_valid(rule.preconditions)
+        # assert self.check_if_valid(rule.preconditions)
 
     def get_score(self, preconditions):
         """Get a score for a possible set of preconditions
@@ -463,9 +463,6 @@ class TrimPreconditionsSearchOperator(SearchOperator):
         for i in range(len(remaining_preconditions)):
             child_preconditions = [remaining_preconditions[j] \
                 for j in range(len(remaining_preconditions)) if i != j]
-            # if len(self._rule.preconditions) >= 5:
-            #     if sum([p.predicate.name == "smaller" for p in child_preconditions]) == 1:
-            #         import ipdb; ipdb.set_trace()
             if self.check_if_valid(child_preconditions):
                 score = self.get_score(child_preconditions)
                 yield score, child_preconditions
