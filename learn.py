@@ -674,6 +674,9 @@ class DropLits(SearchOperator):
                 new_rule_set = action_rule_set.copy()
                 new_ndr = new_rule_set.ndrs[i]
                 del new_ndr.preconditions[drop_i]
+                # Validate
+                if not new_rule_set.is_valid(self.transitions_for_action):
+                    continue
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
                 # Induce new outcomes for modified ndr
                 induce_outcomes(new_ndr, partitions[i])

@@ -274,4 +274,16 @@ class NDRSet:
         rule = self.find_rule((state, action, None))
         return rule.predict_max(state, action)
 
+    def is_valid(self, transitions):
+        """Make sure each transition is covered once
+        """
+        for transition in transitions:
+            selected_ndr = None
+            for ndr in self.ndrs:
+                if ndr.covers_transition(transition):
+                    if selected_ndr is not None:
+                        return False
+                    selected_ndr = ndr
+        return True
+
 

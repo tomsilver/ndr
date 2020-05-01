@@ -179,7 +179,7 @@ def main():
         max_transitions_per_action=500,)
     training_env.close()
 
-    # print_training_data(training_data)
+    print_training_data(training_data)
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(get_env_id(training_env))
     rule_set = learn_rule_set(training_data, rule_set_outfile)
@@ -189,8 +189,8 @@ def main():
     test_env = gym.make("PDDLEnvTspTest-v0")
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True,
-        num_problems=10,
-        max_num_steps=25)
+        num_problems=5,
+        max_num_steps=100)
     test_env.close()
 
     print("Test results:")
