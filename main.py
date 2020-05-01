@@ -170,15 +170,16 @@ def main():
 
     # training_env = PybulletBlocksEnv(use_gui=False)  #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4')
     # training_env = gym.make("PDDLEnvHanoi-v0")
+    training_env = gym.make("PDDLEnvTsp-v0")
     # training_env = gym.make("PDDLEnvDoors-v0")
     # training_env = gym.make("PDDLEnvRearrangement-v0")
-    training_env = gym.make("PDDLEnvFerry-v0")
+    # training_env = gym.make("PDDLEnvFerry-v0")
     training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))
     training_data = collect_training_data(training_env, data_outfile, verbose=True,
         max_num_trials=5000, #5000, 
-        num_transitions_per_problem=10,
-        max_transitions_per_action=100,)
+        num_transitions_per_problem=100,
+        max_transitions_per_action=2500,)
     training_env.close()
 
     print_training_data(training_data)
@@ -189,6 +190,7 @@ def main():
     # test_env = PybulletBlocksEnv(use_gui=False) 
     # test_env = gym.make("PDDLEnvHanoiTest-v0")
     # test_env = gym.make("PDDLEnvDoorsTest-v0")
+    test_env = gym.make("PDDLEnvTspTest-v0")
     # test_env = gym.make("PDDLEnvRearrangementTest-v0")
     # test_env = gym.make("PDDLEnvFerryTest-v0")
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
