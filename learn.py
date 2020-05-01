@@ -371,7 +371,7 @@ def get_all_possible_outcomes(rule, covered_transitions):
             # the rule, this outcome is noise
             try:
                 lifted_effects = {ground_literal(e, inverse_sigma) for e in effects}
-            except KeyError:
+            except (KeyError, TypeError):
                 continue
             all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     return all_possible_outcomes

@@ -149,7 +149,7 @@ class NDR:
             inverse_sigma = {v : k for k, v in sigma.items()}
             try:
                 lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
-            except KeyError:
+            except (KeyError, TypeError):
                 # Some object in the effects was not named in the rule
                 lifted_effects = {NOISE_OUTCOME}
             selected_outcome_idx = None

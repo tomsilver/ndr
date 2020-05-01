@@ -1,5 +1,6 @@
 from pddlgym.parser import Operator, PDDLProblemParser, parse_plan_step
 from pddlgym.structs import LiteralConjunction, Predicate
+from ndr.ndrs import NOISE_OUTCOME
 
 from collections import defaultdict
 import sys
@@ -36,7 +37,7 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
             probs, effs = ndr.effect_probs, ndr.effects
             max_idx = np.argmax(probs)
             max_effects = LiteralConjunction(sorted(effs[max_idx]))
-            if len(max_effects.literals) == 0:
+            if len(max_effects.literals) == 0 or NOISE_OUTCOME in max_effects.literals:
                 continue
             preconds = LiteralConjunction(sorted(ndr.preconditions) + [ndr.action])
             params = sorted({ v for lit in preconds.literals for v in lit.variables })
@@ -62,14 +63,15 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
             expected_next_state = get_next_expected_state(state, plan[0])
             return plan.pop(0)
 
-        # Get objects from the state
-        objects = set()
-        for lit in state:
-            objects.update(lit.variables)
-
         # Add possible actions to state
         full_state = state.copy()
         full_state.update(action_space.all_ground_literals())
+
+        # Get objects from the state
+        objects = set()
+        for lit in full_state:
+            objects.update(lit.variables)
+
         # Create problem file
         fname = '/tmp/problem.pddl'
         PDDLProblemParser.create_pddl_file(fname, objects, full_state, "myproblem", domain_name, goal)
