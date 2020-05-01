@@ -1,7 +1,7 @@
 """Main file for NDR learning
 """
 from ndr.ndrs import NDR, NDRSet, NOISE_OUTCOME, MultipleOutcomesPossible
-from pddlgym.structs import Anti, ground_literal
+from pddlgym.structs import Not, Anti, ground_literal
 from collections import defaultdict
 from termcolor import colored
 from scipy.optimize import minimize
@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 10. # Weight on rule set size penalty
+ALPHA = 1. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 DEBUG = False
 
@@ -636,6 +636,7 @@ class ExplainExamples(SearchOperator):
             score = score_action_rule_set(new_rule_set, self.transitions_for_action)
             yield score, new_rule_set
 
+
 class DropRules(SearchOperator):
     """Search operator that drops one rule from the set
     """
@@ -718,6 +719,35 @@ class AddLits(SearchOperator):
                 score = score_action_rule_set(new_rule_set, self.transitions_for_action)
                 yield score, new_rule_set
 
+
+class SplitOnLits(AddLits):
+    """Search operator that splits on a literal, creating two new rules
+    """
+
+    def get_children(self, action_rule_set):
+        print("Running split on lits")
+        for i in range(len(action_rule_set.ndrs)):
+            for new_lit in self._all_possible_additions:
+                # No use adding a lit that's already there
+                if new_lit in action_rule_set.ndrs[i].preconditions or \
+                   Not(new_lit) in action_rule_set.ndrs[i].preconditions:
+                    continue
+                new_rule_set = action_rule_set.copy()
+                pos_ndr = new_rule_set.ndrs[i]
+                pos_ndr.preconditions.append(new_lit)
+                neg_ndr = action_rule_set.ndrs[i].copy()
+                neg_ndr.preconditions.append(Not(new_lit))
+                new_rule_set.ndrs.insert(i+1, neg_ndr)
+                partitions = new_rule_set.partition_transitions(self.transitions_for_action)
+                # Induce new outcomes for modified ndrs
+                induce_outcomes(pos_ndr, partitions[i])
+                induce_outcomes(neg_ndr, partitions[i+1])
+                # Update default rule parameters
+                learn_parameters(new_rule_set.default_ndr, partitions[-1])
+                score = score_action_rule_set(new_rule_set, self.transitions_for_action)
+                yield score, new_rule_set
+
+
 def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
@@ -725,12 +755,14 @@ def get_search_operators(action, transitions_for_action):
     add_lits = AddLits(transitions_for_action)
     drop_rules = DropRules(transitions_for_action)
     drop_lits = DropLits(transitions_for_action)
+    split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
         explain_examples, 
         add_lits, 
         drop_rules,
-        drop_lits
+        drop_lits,
+        split_on_lits
     ]
 
 ## Main

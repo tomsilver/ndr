@@ -117,13 +117,30 @@ def test_integration():
             max_transitions_per_action=500)
         training_env.close()
         rule_set = learn_rule_set(training_data)
-        test_env = NDRBlocksEnv()
+        test_env = gym.make("PDDLEnvHanoiTest-v0")
         test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
             num_problems=5,
             max_num_steps=10000)
         test_env.close()
         assert np.sum(test_results) == 5
     print("Hanoi integration test passed.")
+
+    # Test TSP
+    with nostdout():
+        training_env = gym.make("PDDLEnvTsp-v0")
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env,
+            num_transitions_per_problem=10,
+            max_transitions_per_action=500)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = gym.make("PDDLEnvTspTest-v0")
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+            num_problems=5,
+            max_num_steps=10000)
+        test_env.close()
+        assert np.sum(test_results) == 5
+    print("TSP integration test passed.")
 
     # Test NDRBlocks
     with nostdout():
