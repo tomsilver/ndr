@@ -163,6 +163,24 @@ def test_integration():
     #     assert np.sum(test_results) == 5
     # print("TSP integration test passed.")
 
+    # Test Rearrangement
+    # Currently broken due to two preconditions involving non-referenced objects
+    # with nostdout():
+    #     training_env = gym.make("PDDLEnvRearrangement-v0")
+    #     training_env.seed(seed)
+    #     training_data = collect_training_data(training_env,
+    #         num_transitions_per_problem=10,
+    #         max_transitions_per_action=100)
+    #     training_env.close()
+    #     rule_set = learn_rule_set(training_data)
+    #     test_env = gym.make("PDDLEnvRearrangement-v0")
+    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+    #         num_problems=5,
+    #         max_num_steps=10000)
+    #     test_env.close()
+    #     assert np.sum(test_results) == 5
+    # print("TSP integration test passed.")
+
     # Test NDRBlocks
     with nostdout():
         training_env = NDRBlocksEnv()
