@@ -5,7 +5,7 @@ Based on the environment described in ZPK.
 from .rendering.block_words import render as _render
 from .rendering.block_words import get_objects_from_obs as get_piles
 from ndr.ndrs import NDR, NDRSet
-from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti, ground_literal
+from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti, ground_literal, State
 from pddlgym.spaces import LiteralSpace, LiteralSetSpace
 from pddlgym.inference import find_satisfying_assignments
 
@@ -192,13 +192,11 @@ class NDRBlocksEnv(gym.Env):
         self._problem_idx = self._rng.choice(self.num_problems)
         self._state, self._goal = self.problems[self._problem_idx]
         self._problem_objects = sorted({ v for lit in self._state for v in lit.variables })
-        self.action_space.update(self._problem_objects)
         return self._get_observation(), self._get_debug_info()
 
     def step(self, action):
         ndr_list = self.operators[action.predicate]
-        full_state = self._get_full_state()
-        effects = self._sample_effects(ndr_list, full_state, action, self._rng)
+        effects = self._sample_effects(ndr_list, self._state, action, self._rng)
         self._state = self._execute_effects(self._state, effects)
         done = self._is_goal_reached() or noiseoutcome() in self._state
         reward = float(self._is_goal_reached())
@@ -212,15 +210,12 @@ class NDRBlocksEnv(gym.Env):
         return self._get_full_state()
 
     def _get_debug_info(self):
-        return { "goal" : self._goal }
+        return {}
 
-    def _get_full_state(self, include_possible_actions_in_state=False):
-        obs = self._state.copy()
-        if include_possible_actions_in_state:
-            obs |= self.action_space.all_ground_literals()
-        if noiseoutcome() in obs:
-            return { noiseoutcome() }
-        return obs
+    def _get_full_state(self):
+        if noiseoutcome() in self._state:
+            return State({ noiseoutcome() }, self._problem_objects, self._goal)
+        return State(self._state, self._problem_objects, self._goal)
 
     def _is_goal_reached(self):
         return self._goal.holds(self._state)

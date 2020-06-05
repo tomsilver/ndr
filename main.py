@@ -49,7 +49,7 @@ def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_pro
     num_no_effects = { a : 0 for a in actions }
 
     if policy is None:
-        policy = lambda s : env.action_space.sample()
+        policy = lambda s : env.action_space.sample(s)
     transitions = defaultdict(list)
     for trial in range(max_num_trials):
         if all(c >= max_transitions_per_action for c in total_counts.values()):
@@ -77,7 +77,7 @@ def collect_transition_dataset(env, max_num_trials=5000, num_transitions_per_pro
                 total_counts[action.predicate] += 1
                 if null_effect:
                     num_no_effects[action.predicate] += 1
-                transition = (obs, action, effects)
+                transition = (obs.literals, action, effects)
                 transitions[action.predicate].append(transition)
             obs = next_obs
 
@@ -87,12 +87,12 @@ def construct_effects(obs, next_obs):
     """Convert a next observation into effects
     """
     # This is just for debugging environments where noise outcomes are simulated
-    if noiseoutcome() in next_obs:
+    if noiseoutcome() in next_obs.literals:
         return { noiseoutcome() }
     effects = set()
-    for lit in next_obs - obs:
+    for lit in next_obs.literals - obs.literals:
         effects.add(lit)
-    for lit in obs - next_obs:
+    for lit in obs.literals - next_obs.literals:
         effects.add(Anti(lit))
     return effects
 
@@ -108,7 +108,7 @@ def print_training_data(training_data):
             print_transition(transition)
             print()
 
-def learn_rule_set(training_data, outfile=None):
+def learn_rule_set(training_data, outfile=None, search_method="greedy"):
     """Main learning step
     """
     if outfile is not None and os.path.exists(outfile):
@@ -118,7 +118,7 @@ def learn_rule_set(training_data, outfile=None):
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
     else:
         print("Learning rules... ")
-        rules = run_main_search(training_data)
+        rules = run_main_search(training_data, search_method=search_method)
         num_rules = sum(len(v) for v in rules.values())
         print("Loaded {} rules for {} actions.".format(num_rules, len(rules)))
         if outfile is not None:
@@ -169,12 +169,13 @@ def main():
     seed = 0
 
     # training_env = PybulletBlocksEnv(use_gui=False)  #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4')
-    # training_env = gym.make("PDDLEnvHanoi-v0")
-    training_env = gym.make("PDDLEnvTsp-v0")
+    # training_env = gym.make("PDDLEnvBlocks-v0")
+    training_env = gym.make("PDDLEnvHanoi-v0")
+    # training_env = gym.make("PDDLEnvTsp-v0")
     # training_env = gym.make("PDDLEnvDoors-v0")
     # training_env = gym.make("PDDLEnvRearrangement-v0")
     # training_env = gym.make("PDDLEnvFerry-v0")
-    training_env.seed(seed)
+    # training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))
     training_data = collect_training_data(training_env, data_outfile, verbose=True,
         max_num_trials=5000, #5000, 
@@ -182,21 +183,22 @@ def main():
         max_transitions_per_action=2500,)
     training_env.close()
 
-    print_training_data(training_data)
+    # print_training_data(training_data)
 
     rule_set_outfile = "data/{}_rule_set.pkl".format(get_env_id(training_env))
-    rule_set = learn_rule_set(training_data, rule_set_outfile)
+    rule_set = learn_rule_set(training_data, rule_set_outfile, search_method="greedy")
 
-    # test_env = PybulletBlocksEnv(use_gui=False) 
-    # test_env = gym.make("PDDLEnvHanoiTest-v0")
+    # test_env = PybulletBlocksEnv(record_low_level_video=True, video_out='/tmp/lowlevel_test.gif') 
+    # test_env = gym.make("PDDLEnvBlocksTest-v0")
+    test_env = gym.make("PDDLEnvHanoiTest-v0")
     # test_env = gym.make("PDDLEnvDoorsTest-v0")
-    test_env = gym.make("PDDLEnvTspTest-v0")
+    # test_env = gym.make("PDDLEnvTspTest-v0")
     # test_env = gym.make("PDDLEnvRearrangementTest-v0")
-    # test_env = gym.make("PDDLEnvFerryTest-v0")
+    # # test_env = gym.make("PDDLEnvFerryTest-v0")
     test_outfile = "data/{}_test_results.pkl".format(get_env_id(test_env))
     test_results = run_test_suite(rule_set, test_env, test_outfile, render=False, verbose=True,
-        num_problems=5,
-        max_num_steps=100)
+        num_problems=1,
+        max_num_steps=25)
     test_env.close()
 
     print("Test results:")

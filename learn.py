@@ -69,7 +69,7 @@ def run_best_first_search(search_operators, init_state, init_score,
     best_score, best_state = init_score, init_state
 
     queue = []
-    hq.heappush(queue, (0, 0, state))
+    hq.heappush(queue, (0, 0, init_state))
 
     if verbose:
         print("Starting search with initial score", best_score)
@@ -89,7 +89,7 @@ def run_best_first_search(search_operators, init_state, init_score,
                     best_score = score
                     if verbose:
                         print("New best score:", best_score)
-                        print("New best state:", best_rule_set)
+                        print("New best state:", best_state)
 
     return best_state
 

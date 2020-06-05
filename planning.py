@@ -1,5 +1,5 @@
 from pddlgym.parser import Operator, PDDLProblemParser, parse_plan_step
-from pddlgym.structs import LiteralConjunction, Predicate
+from pddlgym.structs import LiteralConjunction, Predicate, State
 from ndr.ndrs import NOISE_OUTCOME
 
 from collections import defaultdict
@@ -55,22 +55,21 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
         return ndr_operators[action.predicate].predict_max(state, action)
 
     # Given a state, replan and execute first section in plan
-    def policy(state, goal):
+    def policy(obs):
         nonlocal expected_next_state
         nonlocal plan
+
+        state = obs.literals
+        goal = obs.goal
+        objects = obs.objects
 
         if False: #len(plan) > 0:
             expected_next_state = get_next_expected_state(state, plan[0])
             return plan.pop(0)
 
         # Add possible actions to state
-        full_state = state.copy()
-        full_state.update(action_space.all_ground_literals())
-
-        # Get objects from the state
-        objects = set()
-        for lit in full_state:
-            objects.update(lit.variables)
+        full_state = set(state)
+        full_state.update(action_space.all_ground_literals(obs))
 
         # Create problem file
         fname = '/tmp/problem.pddl'
@@ -83,7 +82,7 @@ def find_ff_replan_policy(ndr_operators, action_space, observation_space):
         except NoPlanFoundException:
             # Default to random
             print("no plan found")
-            return action_space.sample()
+            return action_space.sample(obs)
         # Updated expected next state
         expected_next_state = get_next_expected_state(state, plan[0])
         return plan.pop(0)
@@ -99,6 +98,7 @@ class Planner:
         self._predicates = {p.name : p \
             for p in observation_space.predicates + action_space.predicates}
         self._types = {str(t) : t for p in self._predicates.values() for t in p.var_types}
+        self._actions = {p.name for p in action_space.predicates}
         self._problem_files = {}
 
     @abc.abstractmethod
@@ -204,7 +204,14 @@ class Planner:
 
             # Parse raw problem
             problem_parser = PDDLProblemParser(raw_problem_fname,
-                self.domain_name.lower(), self._types, self._predicates)
+                self.domain_name.lower(), self._types, self._predicates, self._actions)
+            new_initial_state = set(problem_parser.initial_state)
+
+            # Add actions
+            action_lits = set(self._action_space.all_ground_literals(
+                State(new_initial_state, problem_parser.objects, problem_parser.goal),
+                valid_only=False))
+            new_initial_state |= action_lits
 
             # Add 'Different' pairs for each pair of objects
             Different = Predicate('Different', 2)
@@ -216,9 +223,10 @@ class Planner:
                     # if obj1.var_type != obj2.var_type:
                     #     continue
                     diff_lit = Different(obj1, obj2)
-                    problem_parser.initial_state.add(diff_lit)
+                    new_initial_state.add(diff_lit)
 
             # Write out new temporary problem file
+            problem_parser.initial_state = frozenset(new_initial_state)
             problem_parser.write(problem_fname)
 
             # Add to cache
@@ -241,7 +249,7 @@ class FastForwardPlanner(Planner):
         start_time = time.time()
         output = subprocess.getoutput(cmd_str)
         end_time = time.time()
-        # os.remove(domain_fname)
+        os.remove(domain_fname)
         if not use_cache:
             os.remove(problem_fname)
         if end_time - start_time > 0.9*self.planner_timeout:
@@ -270,11 +278,12 @@ class FastForwardPlanner(Planner):
     def _plan_to_actions(self, plan):
         operators = self._learned_operators
         action_predicates = self._action_space.predicates
+        objects = self._action_space._objects
 
         actions = []
         for plan_step in plan:
             if plan_step == "reach-goal":
                 continue
-            action = parse_plan_step(plan_step, operators, action_predicates)
+            action = parse_plan_step(plan_step, operators, action_predicates, objects)
             actions.append(action)
         return actions

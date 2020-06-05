@@ -64,7 +64,7 @@ def run_policy(env, policy, max_num_steps=10, verbose=False, check_reward=True, 
         if verbose:
             print("Obs:", obs)
     
-        action = policy(obs, debug_info['goal'])
+        action = policy(obs)
         if verbose:
             print("Act:", action)
 
