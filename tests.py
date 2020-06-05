@@ -193,6 +193,24 @@ def test_integration():
     #     assert np.sum(test_results) == 5
     # print("TSP integration test passed.")
 
+    # Test deterministic blocks
+    with nostdout():
+        training_env = gym.make("PDDLEnvBlocks-v0")
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env,
+            max_num_trials=5000,
+            num_transitions_per_problem=10,
+            max_transitions_per_action=500,)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = gym.make("PDDLEnvBlocksTest-v0")
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+            num_problems=5,
+            max_num_steps=50)
+        test_env.close()
+        assert np.sum(test_results) == 5
+    print("Blocks integration test passed.")
+
     # Test NDRBlocks
     with nostdout():
         training_env = NDRBlocksEnv()
