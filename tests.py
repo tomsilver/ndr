@@ -206,7 +206,7 @@ def test_integration2():
 
     training_data = {
         MoveTo : [
-            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'), 
+            ({At('robot', 'loc1'), At('o1', 'loc2'),
               IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
              MoveTo('loc2'),
              {Anti(At('robot', 'loc1')), At('robot', 'loc2')},
@@ -488,7 +488,7 @@ if __name__ == "__main__":
     # test_planning()
     test_integration1()
     test_integration2()
-    test_integration3()
+    # test_integration3()
     test_integration4()
     # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))

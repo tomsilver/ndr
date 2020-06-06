@@ -281,6 +281,8 @@ def learn_params_analytically(rule, covered_transitions):
     if denom == 0:
         rule.effect_probs = np.ones(len(effect_counts), dtype=np.float32) / len(effect_counts)
     else:
+        # if len(rule.preconditions) == 3 and sum([lit.predicate.name == "At" for lit in rule.preconditions]) == 2:
+            # import ipdb; ipdb.set_trace()
         rule.effect_probs = np.array(effect_counts) / np.sum(effect_counts)
 
 

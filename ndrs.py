@@ -113,6 +113,7 @@ class NDR:
                 result = None
             else:
                 result = assignments[0]
+                assert len(result.values()) == len(set(result.values()))
             self._precondition_cache[cache_key] = result
         return self._precondition_cache[cache_key]
 
