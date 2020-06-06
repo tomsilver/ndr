@@ -268,9 +268,17 @@ def test_integration3():
               At('o2', 'loc2'), At('robot', 'loc2'), HandsFree0(), },
              Pick('o2'),
              { Holding('o2'), Anti(At('o2', 'loc2')), Anti(HandsFree0()) }),
+            ({ IsPawn('o1'), IsPawn('o2'), IsRobot('robot'), At('o1', 'loc2'), 
+              At('o2', 'loc2'), At('robot', 'loc2'), HandsFree0(), },
+             Pick('o2'),
+             { Holding('o2'), Anti(At('o2', 'loc2')), Anti(HandsFree0()) }),
             ({ IsPawn('o1'), IsPawn('o2'), IsRobot('robot'), At('o1', 'loc1'), 
               At('o2', 'loc2'), At('robot', 'loc2'), HandsFree0(), },
              Pick('o1'),
+             set()),
+            ({ IsPawn('o1'), IsPawn('o2'), IsRobot('robot'), At('o1', 'loc1'), 
+              At('o2', 'loc2'), At('robot', 'loc2'), Holding('o3'), },
+             Pick('o2'),
              set()),
         ],
     }
@@ -488,7 +496,7 @@ if __name__ == "__main__":
     # test_planning()
     test_integration1()
     test_integration2()
-    # test_integration3()
+    test_integration3()
     test_integration4()
     # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))
