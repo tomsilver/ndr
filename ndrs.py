@@ -107,7 +107,8 @@ class NDR:
             kb = state | { action }
             assert action.predicate == self.action.predicate
             conds = [self.action] + list(self.preconditions)
-            assignments = find_satisfying_assignments(kb, conds)
+            assignments = find_satisfying_assignments(kb, conds,
+                allow_redundant_variables=False)
             if len(assignments) != 1:
                 result = None
             else:

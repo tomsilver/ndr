@@ -291,8 +291,6 @@ def test_integration3():
 def test_integration4():
     print("Running integration test 4...")
 
-    ## Make this closer to the real deal until it breaks
-
     training_data = {
         Pick : [
             ({ IsPawn('o1'), IsPawn('o2'), IsRobot('robot'), At('o1', 'loc1'), 
@@ -491,6 +489,6 @@ if __name__ == "__main__":
     test_integration1()
     test_integration2()
     test_integration3()
-    # test_integration4()
+    test_integration4()
     # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))
