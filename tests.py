@@ -200,6 +200,8 @@ def test_integration1():
     return run_integration_test(training_data, test_transitions)
 
 def test_integration2():
+    """It was important to add TrimObjects for this test to pass
+    """
     print("Running integration test 2...")
 
     training_data = {
@@ -209,11 +211,11 @@ def test_integration2():
              MoveTo('loc2'),
              {Anti(At('robot', 'loc1')), At('robot', 'loc2')},
             ),
-            # ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'), 
-            #   IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
-            #  MoveTo('loc1'),
-            #  set(),
-            # ),
+            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'), 
+              IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
+             MoveTo('loc1'),
+             set(),
+            ),
             ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'),
               At('o1', 'loc3'), IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
              MoveTo('loc3'),
@@ -221,6 +223,11 @@ def test_integration2():
             ),
             ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'),
               At('o1', 'loc3'), IsMonkey('m1'), IsRobot('robot'), IsMonkey('o1') },
+             MoveTo('loc3'),
+             {Anti(At('robot', 'loc1')), At('robot', 'loc3')},
+            ),
+            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'),
+              At('o1', 'loc3'), IsPawn('m1'), IsRobot('robot'), IsPawn('o1') },
              MoveTo('loc3'),
              {Anti(At('robot', 'loc1')), At('robot', 'loc3')},
             ),

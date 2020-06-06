@@ -482,6 +482,20 @@ class TrimPreconditionsSearchOperator(SearchOperator):
                 yield score, child_preconditions
 
 
+class TrimObjectsSearchOperator(TrimPreconditionsSearchOperator):
+    def get_children(self, remaining_preconditions):
+        all_variables = {v for lit in remaining_preconditions for v in lit.variables}
+        for var_to_drop in sorted(all_variables):
+            child_preconditions = []
+            for lit in remaining_preconditions:
+                if var_to_drop not in lit.variables:
+                    child_preconditions.append(lit)
+            if self.check_if_valid(child_preconditions):
+                score = self.get_score(child_preconditions)
+                yield score, child_preconditions
+
+
+
 class ExplainExamples(SearchOperator):
     """Explain examples, the beefiest search operator
 
@@ -637,6 +651,15 @@ class ExplainExamples(SearchOperator):
             greedy_break=True)
         rule.preconditions = best_preconditions
         if DEBUG: import ipdb; ipdb.set_trace()
+        # Greedily trim objects
+        op = TrimObjectsSearchOperator(rule, transitions_for_action)
+        init_state = list(rule.preconditions)
+        init_score = op.get_score(init_state)
+        best_preconditions = run_greedy_search([op], init_state, init_score,
+            greedy_break=True)
+        rule.preconditions = best_preconditions
+        if DEBUG: import ipdb; ipdb.set_trace()
+
 
     def _create_new_rule_set(self, old_rule_set, new_rule):
         """Step 3: Create a new rule set containing the new rule
@@ -658,9 +681,8 @@ class ExplainExamples(SearchOperator):
         # Recompute the parameters of the new rule and default rule
         default_rule = new_rule_set.default_ndr
         partitions = new_rule_set.partition_transitions(self.transitions_for_action)
-        assert len(partitions) == 2
         induce_outcomes(new_rule, partitions[0])
-        induce_outcomes(default_rule, partitions[1])
+        induce_outcomes(default_rule, partitions[-1])
         if DEBUG: import ipdb; ipdb.set_trace()
         return new_rule_set
 
@@ -851,7 +873,7 @@ def get_search_operators(action, transitions_for_action):
     # add_lits = AddLits(transitions_for_action)
     # drop_rules = DropRules(transitions_for_action)
     # drop_lits = DropLits(transitions_for_action)
-    drop_objects = DropObjects(transitions_for_action)
+    # drop_objects = DropObjects(transitions_for_action)
     # split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
@@ -860,7 +882,7 @@ def get_search_operators(action, transitions_for_action):
         # drop_rules,
         # drop_lits,
         # split_on_lits,
-        drop_objects,
+        # drop_objects,
     ]
 
 ## Main
