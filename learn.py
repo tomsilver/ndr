@@ -14,7 +14,7 @@ import abc
 
 ALPHA = 1. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
-VERBOSE = False
+VERBOSE = True
 DEBUG = False
 
 ## Generic search
@@ -149,6 +149,8 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
         # Other outcome
         if NOISE_OUTCOME not in outcome:
             transition_likelihood += prob
+        if transition_likelihood == 0.:
+            import ipdb; ipdb.set_trace()
     except MultipleOutcomesPossible:
         state, action, effects = transition
         sigma = rule.find_substitutions(state, action)
@@ -159,9 +161,20 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
                 # c.f. equation 3 in paper
                 transition_likelihood += p_min * prob
             else:
-                grounded_outcome = {ground_literal(lit, sigma) for lit in outcome}
-                if sorted(grounded_outcome) == sorted(effects):
+                ground_outcome = {ground_literal(lit, sigma) for lit in outcome}
+                # Check if the ground outcome is equivalent to the effects
+                # before Anti's have been applied
+                if sorted(ground_outcome) == sorted(effects):
                     transition_likelihood += prob
+                # Check if the ground outcome is equivalent to the effects
+                # after Anti's have been applied
+                else:
+                    for lit in set(ground_outcome):
+                        if lit.is_anti and lit.inverted_anti in ground_outcome:
+                            ground_outcome.remove(lit)
+                            ground_outcome.remove(lit.inverted_anti)
+                    if sorted(ground_outcome) == sorted(effects):
+                        transition_likelihood += prob
     return transition_likelihood
 
 def score_action_rule_set(action_rule_set, transitions_for_action, p_min=P_MIN, alpha=ALPHA):
@@ -575,19 +588,22 @@ class ExplainExamples(SearchOperator):
         ExplainExamples.add_deictic_refs(transition, changed_objects, sigma_inverse, 
             variable_name_generator, overfitting_preconditions, new_rule)
 
-        # # Look for unreferenced objects that are appear with at least one referenced
-        # # object in some literal
-        # s, a, effs = transition
-        # referenced_objects = changed_objects | set(a.variables)
-        # nearby_objects = set()
-        # for lit in s:
-        #     if len(set(lit.variables) & referenced_objects) > 0:
-        #         nearby_objects.update(set(lit.variables) - referenced_objects)
+        ## DEPARTURE FROM ZPK ##
+        # Look for unreferenced objects that are appear with at least one referenced
+        # object in some literal
+        s, a, effs = transition
+        referenced_objects = changed_objects | set(a.variables)
+        nearby_objects = set()
+        for lit in s:
+            if len(set(lit.variables) & referenced_objects) > 0:
+                nearby_objects.update(set(lit.variables) - referenced_objects)
 
-        # # Add deictic refs for nearby objects
-        # ExplainExamples.add_deictic_refs(transition, nearby_objects, sigma_inverse, 
-        #     variable_name_generator, overfitting_preconditions, new_rule)
-        # if DEBUG: import ipdb; ipdb.set_trace()
+        # Add deictic refs for nearby objects
+        ExplainExamples.add_deictic_refs(transition, nearby_objects, sigma_inverse, 
+            variable_name_generator, overfitting_preconditions, new_rule)
+        ## END DEPARTURE ##
+
+        if DEBUG: import ipdb; ipdb.set_trace()
 
         return overfitting_preconditions
 
@@ -639,11 +655,12 @@ class ExplainExamples(SearchOperator):
                 new_rules.append(rule)
         # New rule set
         new_rule_set = NDRSet(new_rule.action, new_rules)
-        # Recompute the parameters of the default rule
+        # Recompute the parameters of the new rule and default rule
         default_rule = new_rule_set.default_ndr
         partitions = new_rule_set.partition_transitions(self.transitions_for_action)
-        covered_transitions = partitions[-1]
-        induce_outcomes(default_rule, covered_transitions)
+        assert len(partitions) == 2
+        induce_outcomes(new_rule, partitions[0])
+        induce_outcomes(default_rule, partitions[1])
         if DEBUG: import ipdb; ipdb.set_trace()
         return new_rule_set
 
@@ -729,6 +746,35 @@ class DropLits(SearchOperator):
                 yield score, new_rule_set
 
 
+class DropObjects(SearchOperator):
+    """Search operator that drops all lits associated with one object in each rule set
+    """
+    def __init__(self, transitions_for_action):
+        self.transitions_for_action = transitions_for_action
+
+    def get_children(self, action_rule_set):
+        # Don't drop the default rule
+        for i, ndr in enumerate(action_rule_set.ndrs):
+            all_variables = {v for lit in ndr.preconditions for v in lit.variables}
+            for var_to_drop in sorted(all_variables):
+                new_rule_set = action_rule_set.copy()
+                new_ndr = new_rule_set.ndrs[i]
+                for j in range(len(ndr.preconditions)-1, -1, -1):
+                    lit = ndr.preconditions[j]
+                    if var_to_drop in lit.variables:
+                        del new_ndr.preconditions[j]
+                # Validate
+                if not new_rule_set.is_valid(self.transitions_for_action):
+                    continue
+                partitions = new_rule_set.partition_transitions(self.transitions_for_action)
+                # Induce new outcomes for modified ndr
+                induce_outcomes(new_ndr, partitions[i])
+                # Update default rule parameters
+                learn_parameters(new_rule_set.default_ndr, partitions[-1])
+                score = score_action_rule_set(new_rule_set, self.transitions_for_action)
+                yield score, new_rule_set
+
+
 class AddLits(SearchOperator):
     """Search operator that adds one lit per rule from the set
     """
@@ -802,17 +848,19 @@ def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
-    add_lits = AddLits(transitions_for_action)
-    drop_rules = DropRules(transitions_for_action)
-    drop_lits = DropLits(transitions_for_action)
-    split_on_lits = SplitOnLits(transitions_for_action)
+    # add_lits = AddLits(transitions_for_action)
+    # drop_rules = DropRules(transitions_for_action)
+    # drop_lits = DropLits(transitions_for_action)
+    drop_objects = DropObjects(transitions_for_action)
+    # split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
         explain_examples, 
-        add_lits, 
-        drop_rules,
-        drop_lits,
-        split_on_lits,
+        # add_lits, 
+        # drop_rules,
+        # drop_lits,
+        # split_on_lits,
+        drop_objects,
     ]
 
 ## Main
