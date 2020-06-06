@@ -125,7 +125,7 @@ def get_unique_transitions(transitions):
         if hashed not in seen_hashes:
             unique_transitions.append((s, a, e))
         seen_hashes.add(hashed)
-    return unique_transitions
+    return sorted(unique_transitions)
 
 ## Scoring
 def get_pen(rule):
@@ -503,19 +503,26 @@ class ExplainExamples(SearchOperator):
 
     Tries to follow the pseudocode in the paper as faithfully as possible
     """
+    max_transitions = np.inf #25
+
     def __init__(self, action, transitions_for_action):
         self.action = action
         self.transitions_for_action = transitions_for_action
         self.unique_transitions = get_unique_transitions(transitions_for_action)
+        self.rng = np.random.RandomState(0)
 
     def _get_default_transitions(self, action_rule_set):
         """Get unique transitions that are covered by the default rule
         """
+        self.rng.shuffle(self.unique_transitions)
+
         default_transitions = []
         for transition in self.unique_transitions:
             covering_rule = action_rule_set.find_rule(transition)
             if covering_rule == action_rule_set.default_ndr:
                 default_transitions.append(transition)
+            if len(default_transitions) > self.max_transitions:
+                break
         return default_transitions
 
     @staticmethod

@@ -37,6 +37,17 @@ Pet = Predicate('Pet', 1, var_types=[MoveableType])
 WantHolding = Predicate('WantHolding', 1, var_types=[MoveableType])
 WantAt = Predicate('WantAt', 2, var_types=[MoveableType, StaticType])
 
+PlaceType = Type('place')
+PathType = Type('path')
+In = Predicate('in', 1, var_types=[PlaceType])
+Visited = Predicate('visited', 1, var_types=[PlaceType])
+Notvisited = Predicate('not-visited', 1, var_types=[PlaceType])
+Complete = Predicate('complete', 1, var_types=[PathType])
+Notcomplete = Predicate('not-complete', 1, var_types=[PathType])
+Connected = Predicate('connected', 2, var_types=[PlaceType, PlaceType])
+Start = Predicate('start', 1, var_types=[PlaceType])
+TSPMoveTo = Predicate('moveto', 1, var_types=[PlaceType])
+
 
 def test_ndr():
     def create_ndr():
@@ -362,6 +373,63 @@ def test_integration4():
 
     return run_integration_test(training_data, test_transitions)
 
+def test_integration5():
+    print("Running integration test 5...")
+
+    training_data = {
+        TSPMoveTo : [
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             { Visited('b'), In('b'), Anti(In('a')), Anti(Notvisited('b'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('a'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('c'),
+             { Visited('c'), In('c'), Anti(In('b')), Anti(Notvisited('c'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('c'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('d'),
+             { Visited('d'), In('d'), Anti(In('c')), Anti(Notvisited('d')),
+               Anti(Notcomplete('path')), Complete('path')}),
+        ],
+    }
+
+    # todo
+    test_transitions = [
+    ]
+
+    return run_integration_test(training_data, test_transitions)
+
 def test_system():
     seed = 0
     print("Running end-to-end tests (this will take a long time)")
@@ -407,7 +475,7 @@ def test_system():
     #     training_env.seed(seed)
     #     training_data = collect_training_data(training_env,
     #         num_transitions_per_problem=10,
-    #         max_transitions_per_action=100)
+    #         max_transitions_per_action=500)
     #     training_env.close()
     #     rule_set = learn_rule_set(training_data)
     #     test_env = gym.make("PDDLEnvRearrangement-v0")
@@ -416,25 +484,25 @@ def test_system():
     #         max_num_steps=10000)
     #     test_env.close()
     #     assert np.sum(test_results) == 5
-    # print("Rearrangement integration test passed.")
+    #     print("Rearrangement integration test passed.")
 
-    # Test deterministic blocks
+    # # Test deterministic blocks
     # with nostdout():
-    training_env = gym.make("PDDLEnvBlocks-v0")
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env,
-        max_num_trials=5000,
-        num_transitions_per_problem=10,
-        max_transitions_per_action=500,)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = gym.make("PDDLEnvBlocksTest-v0")
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-        num_problems=5,
-        max_num_steps=50)
-    test_env.close()
-    assert np.sum(test_results) == 5
-    print("Blocks integration test passed.")
+    # training_env = gym.make("PDDLEnvBlocks-v0")
+    # training_env.seed(seed)
+    # training_data = collect_training_data(training_env,
+    #     max_num_trials=5000,
+    #     num_transitions_per_problem=10,
+    #     max_transitions_per_action=500,)
+    # training_env.close()
+    # rule_set = learn_rule_set(training_data)
+    # test_env = gym.make("PDDLEnvBlocksTest-v0")
+    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+    #     num_problems=5,
+    #     max_num_steps=50)
+    # test_env.close()
+    # assert np.sum(test_results) == 5
+    # print("Blocks integration test passed.")
 
     # # Test NDRBlocks
     # with nostdout():
@@ -450,23 +518,23 @@ def test_system():
     #     assert 40 < np.sum(test_results) < 60
     # print("NDRBlocks integration test passed.")
 
-    # # Test TSP
+    # Test TSP
     # with nostdout():
-    #     training_env = gym.make("PDDLEnvTsp-v0")
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         max_num_trials=5000,
-    #         num_transitions_per_problem=100,
-    #         max_transitions_per_action=2500,)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = gym.make("PDDLEnvTspTest-v0")
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=5,
-    #         max_num_steps=10000)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 5
-    # print("TSP integration test passed.")
+    training_env = gym.make("PDDLEnvTsp-v0")
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        max_num_trials=5000,
+        num_transitions_per_problem=100,
+        max_transitions_per_action=2500,)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = gym.make("PDDLEnvTspTest-v0")
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=5,
+        max_num_steps=10000)
+    test_env.close()
+    assert np.sum(test_results) == 5
+    print("TSP integration test passed.")
 
     # # Test PybulletBlocksEnv
     # with nostdout():
@@ -497,5 +565,6 @@ if __name__ == "__main__":
     # test_integration2()
     # test_integration3()
     # test_integration4()
-    test_system()
+    test_integration5()
+    # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))
