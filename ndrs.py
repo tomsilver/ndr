@@ -146,12 +146,6 @@ class NDR:
         if cache_key not in self._effect_cache:
             sigma = self.find_substitutions(state, action)
             assert sigma is not None, "Rule assumed to cover transition"
-            inverse_sigma = {v : k for k, v in sigma.items()}
-            try:
-                lifted_effects = {ground_literal(lit, inverse_sigma) for lit in effects}
-            except (KeyError, TypeError):
-                # Some object in the effects was not named in the rule
-                lifted_effects = {NOISE_OUTCOME}
             selected_outcome_idx = None
             noise_outcome_idx = None
             for i, outcome in enumerate(self.effects):
@@ -159,7 +153,22 @@ class NDR:
                     assert noise_outcome_idx is None
                     noise_outcome_idx = i
                 else:
-                    if sorted(lifted_effects) == sorted(outcome):
+                    ground_outcome = {ground_literal(lit, sigma) for lit in outcome}
+                    match = False
+                    # Check if the ground outcome is equivalent to the effects
+                    # before Anti's have been applied
+                    if sorted(ground_outcome) == sorted(effects):
+                        match = True
+                    # Check if the ground outcome is equivalent to the effects
+                    # after Anti's have been applied
+                    else:
+                        for lit in set(ground_outcome):
+                            if lit.is_anti and lit.inverted_anti in ground_outcome:
+                                ground_outcome.remove(lit)
+                                ground_outcome.remove(lit.inverted_anti)
+                        if sorted(ground_outcome) == sorted(effects):
+                            match = True
+                    if match:
                         if selected_outcome_idx is not None:
                             raise MultipleOutcomesPossible()
                         selected_outcome_idx = i

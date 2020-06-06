@@ -8,6 +8,8 @@ import pddlgym
 import numpy as np
 
 
+VERBOSE = True
+
 # Some shared stuff
 block_type = Type("block")
 Act0 = Predicate("act0" , 0, [])
@@ -16,6 +18,24 @@ Act1 = Predicate("act1" , 0, [block_type])
 Red = Predicate("red", 1, [block_type])
 Blue = Predicate("blue", 1, [block_type])
 HandsFree = Predicate("handsfree", 0, [])
+
+MoveableType = Type('moveable')
+StaticType = Type('static')
+IsRobot = Predicate('IsRobot', 1, var_types=[MoveableType])
+IsBear = Predicate('IsBear', 1, var_types=[MoveableType])
+IsHoney = Predicate('IsHoney', 1, var_types=[MoveableType])
+IsPawn = Predicate('IsPawn', 1, var_types=[MoveableType])
+IsMonkey = Predicate('IsMonkey', 1, var_types=[MoveableType])
+IsGoal = Predicate('IsGoal', 1, var_types=[StaticType])
+At = Predicate('At', 2, var_types=[MoveableType, StaticType])
+Holding = Predicate('Holding', 1, var_types=[MoveableType])
+MoveTo = Predicate('MoveTo', 1, var_types=[StaticType])
+Pick = Predicate('Pick', 1, var_types=[MoveableType])
+Place = Predicate('Place', 1, var_types=[MoveableType])
+Pet = Predicate('Pet', 1, var_types=[MoveableType])
+WantHolding = Predicate('WantHolding', 1, var_types=[MoveableType])
+WantAt = Predicate('WantAt', 2, var_types=[MoveableType, StaticType])
+
 
 def test_ndr():
     def create_ndr():
@@ -118,9 +138,110 @@ def test_planning():
     assert total_returns == 6
 
 
-def test_integration():
+def run_integration_test(training_data, test_transitions):
+    """Assumes deterministic
+    """
+    rule_set = learn_rule_set(training_data)
+    if VERBOSE:
+        print("Learned rule set:")
+        print_rule_set(rule_set)
+    
+    # Make sure rules are deterministic
+    for rules in rule_set.values():
+        for rule in rules.ndrs:
+            for p in rule.effect_probs:
+                assert abs(p) < 1e-6 or abs(1-p) < 1e-6
+
+    # Test predictions
+    for s, a, effs in test_transitions:
+        action_rule_set = rule_set[a.predicate]
+        prediction = action_rule_set.predict_max(s, a)
+        assert effs == prediction
+
+    print("Test passed")
+
+def test_integration1():
+    print("Running integration test 1...")
+
+    training_data = {
+        Place : [
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o3'),
+         {Anti(Holding('o3'))},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+         Place('o3'),
+         set(),
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o1'),
+         set(),
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions)
+
+def test_integration2():
+    print("Running integration test 2...")
+
+    training_data = {
+        MoveTo : [
+            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'), 
+              IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
+             MoveTo('loc2'),
+             {Anti(At('robot', 'loc1')), At('robot', 'loc2')},
+            ),
+            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'), 
+              IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
+             MoveTo('loc1'),
+             set(),
+            ),
+            ({At('robot', 'loc1'), At('o1', 'loc2'), At('m1', 'loc1'),
+              At('o1', 'loc3'), IsMonkey('m1'), IsRobot('robot'), IsPawn('o1') },
+             MoveTo('loc3'),
+             {Anti(At('robot', 'loc1')), At('robot', 'loc3')},
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({At('robot', 'loc1'), At('o1', 'loc4'), IsRobot('robot')},
+         MoveTo('loc4'),
+         {Anti(At('robot', 'loc1')), At('robot', 'loc4')},
+        ),
+        ({At('robot', 'loc1'), At('o1', 'loc4')},
+         MoveTo('loc4'),
+         set(),
+        ),
+        ({At('m1', 'loc1'), At('o1', 'loc4'), IsMonkey('m1')},
+         MoveTo('loc4'),
+         set(),
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions)
+
+
+
+def test_system():
     seed = 0
-    print("Running integration tests (this will take a long time)")
+    print("Running end-to-end tests (this will take a long time)")
 
     # Test Hanoi
     with nostdout():
@@ -247,8 +368,10 @@ def test_integration():
 if __name__ == "__main__":
     import time
     start_time = time.time()
-    test_ndr()
-    test_ndr_set()
-    test_planning()
-    test_integration()
+    # test_ndr()
+    # test_ndr_set()
+    # test_planning()
+    test_integration1()
+    test_integration2()
+    # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))

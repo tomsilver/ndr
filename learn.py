@@ -14,6 +14,7 @@ import abc
 
 ALPHA = 1. # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
+VERBOSE = False
 DEBUG = False
 
 ## Generic search
@@ -503,10 +504,10 @@ class ExplainExamples(SearchOperator):
             variable_name_generator
 
     @staticmethod
-    def get_overfitting_preconditions(transition):
-        """Helper for Step 1. Also used by AddLits.
+    def get_overfitting_preconditions_for_action(transition):
+        """Helper for Step 1.
         """
-        s, a, effs = transition
+        s, a, _ = transition
         # Helper for checks
         new_rule = NDR(action=None, preconditions=[], effect_probs=[], effects=[])
         new_rule.action, variable_name_generator = ExplainExamples.init_new_rule_action(transition)
@@ -519,15 +520,26 @@ class ExplainExamples(SearchOperator):
             if all(val in sigma_inverse for val in lit.variables):
                 lifted_lit = ground_literal(lit, sigma_inverse)
                 overfitting_preconditions.append(lifted_lit)
-        if DEBUG: import ipdb; ipdb.set_trace()
-        # Step 1.2: Create deictic references for r
-        # Collect the set of constants whose properties changed from s to s' but 
-        # which are not in sigma
+        return new_rule, sigma_inverse, variable_name_generator, overfitting_preconditions
+
+    @staticmethod
+    def get_changed_objects(transition, sigma_inverse):
+        """Helper for Step 1.
+        """
+        _, _, effs = transition
         changed_objects = set()
         for lit in effs:
             for val in lit.variables:
                 if val not in sigma_inverse:
                     changed_objects.add(val)
+        return changed_objects
+
+    @staticmethod
+    def add_deictic_refs(transition, changed_objects, sigma_inverse, variable_name_generator, 
+                         overfitting_preconditions, new_rule):
+        """Helper for Step 1.
+        """
+        s, a, effs = transition
         for c in sorted(changed_objects):
             # Create a new variable and extend sigma to map v to c
             new_variable = next(variable_name_generator)
@@ -543,9 +555,40 @@ class ExplainExamples(SearchOperator):
                     d.append(lifted_lit)
             # Check if d uniquely refers to c in s
             new_rule_copy = new_rule.copy()
-            new_rule_copy.preconditions.extend(d)
+            new_rule_copy.preconditions.extend(overfitting_preconditions+d)
             if new_rule_copy.objects_are_referenced(s, a, [c]):
                 overfitting_preconditions.extend(d)
+
+    @staticmethod
+    def get_overfitting_preconditions(transition):
+        """Helper for Step 1. Also used by AddLits.
+        """
+        new_rule, sigma_inverse, variable_name_generator, overfitting_preconditions = \
+            ExplainExamples.get_overfitting_preconditions_for_action(transition)
+        if DEBUG: import ipdb; ipdb.set_trace()
+        
+        # Step 1.2: Create deictic references for r
+        # Collect the set of constants whose properties changed from s to s' but 
+        # which are not in sigma
+        changed_objects = ExplainExamples.get_changed_objects(transition, sigma_inverse)
+        # Get deictic references
+        ExplainExamples.add_deictic_refs(transition, changed_objects, sigma_inverse, 
+            variable_name_generator, overfitting_preconditions, new_rule)
+
+        # # Look for unreferenced objects that are appear with at least one referenced
+        # # object in some literal
+        # s, a, effs = transition
+        # referenced_objects = changed_objects | set(a.variables)
+        # nearby_objects = set()
+        # for lit in s:
+        #     if len(set(lit.variables) & referenced_objects) > 0:
+        #         nearby_objects.update(set(lit.variables) - referenced_objects)
+
+        # # Add deictic refs for nearby objects
+        # ExplainExamples.add_deictic_refs(transition, nearby_objects, sigma_inverse, 
+        #     variable_name_generator, overfitting_preconditions, new_rule)
+        # if DEBUG: import ipdb; ipdb.set_trace()
+
         return overfitting_preconditions
 
     def _initialize_new_rule(self, transition):
@@ -564,13 +607,14 @@ class ExplainExamples(SearchOperator):
         if DEBUG: import ipdb; ipdb.set_trace()
         return new_rule
 
-    def _trim_preconditions(self, rule):
+    @staticmethod
+    def trim_preconditions(rule, transitions_for_action):
         """Step 2: Trim literals from the rule
         """
         # Create a rule set R' containing r and the default rule
         # Greedily trim literals from r, ensuring that r still covers (s, a, s')
         # and filling in the outcomes using InduceOutcomes until R's score stops improving
-        op = TrimPreconditionsSearchOperator(rule, self.transitions_for_action)
+        op = TrimPreconditionsSearchOperator(rule, transitions_for_action)
         init_state = list(rule.preconditions)
         init_score = op.get_score(init_state)
         best_preconditions = run_greedy_search([op], init_state, init_score,
@@ -610,13 +654,14 @@ class ExplainExamples(SearchOperator):
         transitions = self._get_default_transitions(action_rule_set)
 
         for i, transition in enumerate(transitions):
-            if not DEBUG:
+            if VERBOSE:
                 print("Running explain examples for action {} {}/{}".format(self.action, i, 
                     len(transitions)), end='\r')
                 if i == len(transitions) -1:
                     print()
             if DEBUG: print("Considering explaining example for transition")
             if DEBUG: print_transition(transition)
+
             # Step 1: Create a new rule
             new_rule = self._initialize_new_rule(transition)
             # If preconditions are empty, don't enumerate; this should be covered by the default rule
@@ -626,7 +671,7 @@ class ExplainExamples(SearchOperator):
             if not new_rule.effects_are_referenced(transition):
                 continue
             # Step 2: Trim literals from r
-            self._trim_preconditions(new_rule)
+            self.trim_preconditions(new_rule, self.transitions_for_action)
             # If preconditions are empty, don't enumerate; this should be covered by the default rule
             if len(new_rule.preconditions) == 0:
                 continue
@@ -644,7 +689,6 @@ class DropRules(SearchOperator):
         self.transitions_for_action = transitions_for_action
 
     def get_children(self, action_rule_set):
-        print("Running drop rules")
         # Don't drop the default rule
         for i in range(len(action_rule_set.ndrs)):
             new_rule_set = action_rule_set.copy()
@@ -663,7 +707,6 @@ class DropLits(SearchOperator):
         self.transitions_for_action = transitions_for_action
 
     def get_children(self, action_rule_set):
-        print("Running drop lits")
         # Don't drop the default rule
         for i, ndr in enumerate(action_rule_set.ndrs):
             num_preconds = len(ndr.preconditions)
@@ -700,25 +743,30 @@ class AddLits(SearchOperator):
         unique_transitions = get_unique_transitions(transitions_for_action)
 
         for transition in unique_transitions:
+            # raise NotImplementedError("TODO: fix this like it's fixed in AddDeicticRefsFromObjs")
             preconds = ExplainExamples.get_overfitting_preconditions(transition)
             all_possible_additions.update(preconds)
         return all_possible_additions
 
     def get_children(self, action_rule_set):
-        print("Running add lits")
         for i in range(len(action_rule_set.ndrs)):
             for new_lit in self._all_possible_additions:
                 new_rule_set = action_rule_set.copy()
                 new_ndr = new_rule_set.ndrs[i]
-                # No use adding a lit that's already there
+                # No use adding lits that are already here
                 if new_lit in new_ndr.preconditions:
                     continue
+                # Add the new lits
                 new_ndr.preconditions.append(new_lit)
+                # Trim preconditions
+                # import ipdb; ipdb.set_trace()
+                ExplainExamples.trim_preconditions(new_ndr, self.transitions_for_action)
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
                 # Induce new outcomes for modified ndr
                 induce_outcomes(new_ndr, partitions[i])
                 # Update default rule parameters
                 learn_parameters(new_rule_set.default_ndr, partitions[-1])
+                # import ipdb; ipdb.set_trace()
                 score = score_action_rule_set(new_rule_set, self.transitions_for_action)
                 yield score, new_rule_set
 
@@ -728,7 +776,6 @@ class SplitOnLits(AddLits):
     """
 
     def get_children(self, action_rule_set):
-        print("Running split on lits")
         for i in range(len(action_rule_set.ndrs)):
             for new_lit in self._all_possible_additions:
                 # No use adding a lit that's already there
@@ -765,7 +812,7 @@ def get_search_operators(action, transitions_for_action):
         add_lits, 
         drop_rules,
         drop_lits,
-        split_on_lits
+        split_on_lits,
     ]
 
 ## Main
@@ -776,20 +823,22 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
     rule_sets = {}
 
     for action, transitions_for_action in transition_dataset.items():
-        print("Running search for action", action)
+        if VERBOSE:
+            print("Running search for action", action)
 
         search_operators = get_search_operators(action, transitions_for_action)
         init_score, init_state = create_default_rule_set(action, transitions_for_action)
 
-        print("Initial rule set (score={}):".format(init_score))
-        print_rule_set({action : init_state})
+        if VERBOSE:
+            print("Initial rule set (score={}):".format(init_score))
+            print_rule_set({action : init_state})
 
         if search_method == "greedy":
             action_rule_set = run_greedy_search(search_operators, init_state, init_score, 
-                max_node_expansions=max_node_expansions, rng=rng, verbose=True)
+                max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
         elif search_method == "best_first":
             action_rule_set = run_best_first_search(search_operators, init_state, init_score, 
-                max_node_expansions=max_node_expansions, rng=rng, verbose=True)
+                max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
         else:
             raise NotImplementedError()
 
