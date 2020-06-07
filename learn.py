@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 0.1 # Weight on rule set size penalty
+ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 VERBOSE = True
 DEBUG = False
@@ -767,6 +767,8 @@ class DropLits(SearchOperator):
                 new_ndr = new_rule_set.ndrs[i]
                 del new_ndr.preconditions[drop_i]
                 # Validate
+                # if any("NotOn" in str(p) for p in ndr.preconditions):
+                    # import ipdb; ipdb.set_trace()
                 if not new_rule_set.is_valid(self.transitions_for_action):
                     continue
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
@@ -837,7 +839,8 @@ class AddLits(SearchOperator):
                 new_ndr.preconditions.append(new_lit)
                 # Trim preconditions
                 # import ipdb; ipdb.set_trace()
-                ExplainExamples.trim_preconditions(new_ndr, self.transitions_for_action)
+                # This line leads to issues b/c preconditions may overlap
+                # ExplainExamples.trim_preconditions(new_ndr, self.transitions_for_action)
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
                 # Induce new outcomes for modified ndr
                 induce_outcomes(new_ndr, partitions[i])
@@ -882,18 +885,18 @@ def get_search_operators(action, transitions_for_action):
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
     add_lits = AddLits(transitions_for_action)
-    # drop_rules = DropRules(transitions_for_action)
-    # drop_lits = DropLits(transitions_for_action)
-    # drop_objects = DropObjects(transitions_for_action)
+    drop_rules = DropRules(transitions_for_action)
+    drop_lits = DropLits(transitions_for_action)
+    drop_objects = DropObjects(transitions_for_action)
     split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
         explain_examples, 
         add_lits, 
-        # drop_rules,
-        # drop_lits,
+        drop_rules,
+        drop_lits,
         split_on_lits,
-        # drop_objects,
+        drop_objects,
     ]
 
 ## Main

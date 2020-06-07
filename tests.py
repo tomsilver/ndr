@@ -34,8 +34,10 @@ MoveTo = Predicate('MoveTo', 1, var_types=[StaticType])
 Pick = Predicate('Pick', 1, var_types=[MoveableType])
 Place = Predicate('Place', 1, var_types=[MoveableType])
 Pet = Predicate('Pet', 1, var_types=[MoveableType])
+PutOn = Predicate('PutOn', 1, var_types=[MoveableType])
 WantHolding = Predicate('WantHolding', 1, var_types=[MoveableType])
 WantAt = Predicate('WantAt', 2, var_types=[MoveableType, StaticType])
+On = Predicate('On', 2, var_types=[MoveableType, MoveableType])
 
 PlaceType = Type('place')
 PathType = Type('path')
@@ -575,6 +577,86 @@ def test_integration6():
 
     return run_integration_test(training_data, test_transitions, expect_deterministic=False)
 
+def test_integration7():
+    # Noisy puton test
+    print("Running integration test 7...")
+
+    training_data = {
+        PutOn : [
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o2'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o3'),
+             {Anti(Holding('o1')), On('o1', 'o3')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o2'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o3'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            # this is an important one
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o3'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             {Anti(Holding('o1')), On('o1', 'o3')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3')},
+             PutOn('o2'),
+             set(),
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+         PutOn('o1'),
+         {Anti(Holding('o2')), On('o2', 'o1')},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2'), On('o1', 'o3')},
+         PutOn('o1'),
+         {Anti(Holding('o2')), On('o2', 'o1')},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+         PutOn('o3'),
+         {Anti(Holding('o1'))},
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions, expect_deterministic=False)
+
+def test_negative_preconditions():
+    # This came up in the course of integration test 7
+
+    # ?x0 must bind to o0 and ?x1 must bind to o1, so ?x2 must bind to o2
+    conds = [ PutOn("?x0"), Holding("?x1"), IsPawn("?x2"), Not(On("?x2", "?x0")) ]
+    kb = { PutOn('o0'), IsPawn('o0'), IsPawn('o1'), IsPawn('o2'), Holding('o1'), }
+    assignments = find_satisfying_assignments(kb, conds, allow_redundant_variables=False)
+    assert len(assignments) == 1
+
+    # should be the same, even though IsPawn("?x2") is removed...
+    conds = [ PutOn("?x0"), Holding("?x1"), Not(On("?x2", "?x0")) ]
+    kb = { PutOn('o0'), IsPawn('o0'), IsPawn('o1'), IsPawn('o2'), Holding('o1'), }
+    assignments = find_satisfying_assignments(kb, conds, allow_redundant_variables=False)
+    assert len(assignments) == 1
+
+
+
 def test_system():
     seed = 0
     print("Running end-to-end tests (this will take a long time)")
@@ -649,8 +731,8 @@ def test_system():
     #     assert np.sum(test_results) == 5
     # print("Blocks integration test passed.")
 
-    # Test NDRBlocks
-    # with nostdout():
+    # # Test NDRBlocks
+    # # with nostdout():
     # training_env = NDRBlocksEnv()
     # training_env.seed(seed)
     # training_data = collect_training_data(training_env)
@@ -683,20 +765,20 @@ def test_system():
 
     # Test PybulletBlocksEnv
     # with nostdout():
-    training_env = PybulletBlocksEnv(use_gui=False)
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env,
-        max_num_trials=5000,
-        num_transitions_per_problem=1,
-        max_transitions_per_action=500,
-        verbose=True)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = PybulletBlocksEnv(use_gui=False)
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
-    test_env.close()
-    assert np.sum(test_results) == 8.0
-    print("PybulletBlocksEnv integration test passed.")
+    # training_env = PybulletBlocksEnv(use_gui=False)
+    # training_env.seed(seed)
+    # training_data = collect_training_data(training_env,
+    #     max_num_trials=5000,
+    #     num_transitions_per_problem=1,
+    #     max_transitions_per_action=500,
+    #     verbose=True)
+    # training_env.close()
+    # rule_set = learn_rule_set(training_data)
+    # test_env = PybulletBlocksEnv(use_gui=False)
+    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+    # test_env.close()
+    # assert np.sum(test_results) == 8.0
+    # print("PybulletBlocksEnv integration test passed.")
 
     # print("Integration tests passed.")
 
@@ -711,7 +793,8 @@ if __name__ == "__main__":
     # test_integration2()
     # test_integration3()
     # test_integration4()
-    # test_integration5()
-    test_integration6()
-    # test_system()
+    # # test_integration5()
+    # test_integration6()
+    # test_integration7()
+    test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))
