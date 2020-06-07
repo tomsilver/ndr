@@ -374,6 +374,8 @@ def test_integration4():
     return run_integration_test(training_data, test_transitions)
 
 def test_integration5():
+    raise NotImplementedError("This test doesn't work yet. It's really hard to capture all the different scenarios for TSP concisely.")
+
     print("Running integration test 5...")
 
     training_data = {
@@ -413,6 +415,14 @@ def test_integration5():
                Notcomplete('path'),},
              TSPMoveTo('b'),
              set()),
+            # this is a crucial example!
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('c'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             set()),
             ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
                Connected('c', 'b'), Connected('d', 'a'), Start('a'),
                In('d'),
@@ -421,34 +431,67 @@ def test_integration5():
              TSPMoveTo('a'),
              { In('a'), Anti(In('d')), Anti(Notcomplete('path')), Complete('path')}),
             # different graph
-            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
                Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
                In('a'),
                Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'), 
                Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
              TSPMoveTo('d'),
              set()),
-            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
                Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
                In('a'),
                Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'), 
                Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
              TSPMoveTo('b'),
              { Visited('b'), In('b'), Anti(In('a')), Anti(Notvisited('b'))}),
-            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
                Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
                In('c'),
                Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
                Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
              TSPMoveTo('e'),
              { Visited('e'), In('e'), Anti(In('c')), Anti(Notvisited('e'))}),
-            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('f'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Visited('e'), Visited('f'), Notcomplete('path'),},
+             TSPMoveTo('d'),
+             set()),
+            # crucial example
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('d'),
+               Visited('a'), Visited('b'), Visited('c'), Visited('d'), 
+               Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('f'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Visited('e'), Visited('f'), Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
                Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
                In('f'),
                Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
                Visited('e'), Visited('f'), Notcomplete('path'),},
              TSPMoveTo('a'),
              { In('a'), Anti(In('f')), Anti(Notcomplete('path')), Complete('path')}),
+            # different graph
+            ({ Connected('a', 'b'), Start('a'),
+               In('a'),
+               Visited('a'),Notvisited('b'), Notcomplete('path'),},
+             TSPMoveTo('a'),
+             set()),
+            ({ Connected('a', 'b'), Start('a'),
+               In('a'),
+               Visited('a'),Notvisited('b'), Notcomplete('path'),},
+             TSPMoveTo('b'),
+             { In('b'), Anti(In('a')), Visited('b'), Anti(Notvisited('b')) }),
         ],
     }
 
@@ -547,21 +590,21 @@ def test_system():
     # print("NDRBlocks integration test passed.")
 
     # Test TSP
-    # with nostdout():
-    training_env = gym.make("PDDLEnvTsp-v0")
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env,
-        max_num_trials=5000,
-        num_transitions_per_problem=100,
-        max_transitions_per_action=2500,)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = gym.make("PDDLEnvTspTest-v0")
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-        num_problems=5,
-        max_num_steps=10000)
-    test_env.close()
-    assert np.sum(test_results) == 5
+    with nostdout():
+        training_env = gym.make("PDDLEnvTsp-v0")
+        training_env.seed(seed)
+        training_data = collect_training_data(training_env,
+            max_num_trials=5000,
+            num_transitions_per_problem=100,
+            max_transitions_per_action=2500,)
+        training_env.close()
+        rule_set = learn_rule_set(training_data)
+        test_env = gym.make("PDDLEnvTspTest-v0")
+        test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+            num_problems=5,
+            max_num_steps=10000)
+        test_env.close()
+        assert np.sum(test_results) == 5
     print("TSP integration test passed.")
 
     # # Test PybulletBlocksEnv
@@ -593,6 +636,6 @@ if __name__ == "__main__":
     # test_integration2()
     # test_integration3()
     # test_integration4()
-    test_integration5()
-    # test_system()
+    # test_integration5()
+    test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))

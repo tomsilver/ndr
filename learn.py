@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 1. # Weight on rule set size penalty
+ALPHA = 0.1 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 VERBOSE = True
 DEBUG = False
@@ -149,8 +149,8 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
         # Other outcome
         if NOISE_OUTCOME not in outcome:
             transition_likelihood += prob
-        if transition_likelihood == 0.:
-            import ipdb; ipdb.set_trace()
+        # if transition_likelihood == 0.:
+            # import ipdb; ipdb.set_trace()
     except MultipleOutcomesPossible:
         state, action, effects = transition
         sigma = rule.find_substitutions(state, action)
@@ -503,7 +503,7 @@ class ExplainExamples(SearchOperator):
 
     Tries to follow the pseudocode in the paper as faithfully as possible
     """
-    max_transitions = np.inf #25
+    max_transitions = 25
 
     def __init__(self, action, transitions_for_action):
         self.action = action
@@ -521,7 +521,7 @@ class ExplainExamples(SearchOperator):
             covering_rule = action_rule_set.find_rule(transition)
             if covering_rule == action_rule_set.default_ndr:
                 default_transitions.append(transition)
-            if len(default_transitions) > self.max_transitions:
+            if len(default_transitions) >= self.max_transitions:
                 break
         return default_transitions
 
@@ -658,6 +658,7 @@ class ExplainExamples(SearchOperator):
         init_score = op.get_score(init_state)
         best_preconditions = run_greedy_search([op], init_state, init_score,
             greedy_break=True)
+        # import ipdb; ipdb.set_trace()
         rule.preconditions = best_preconditions
         if DEBUG: import ipdb; ipdb.set_trace()
         # Greedily trim objects
@@ -820,7 +821,6 @@ class AddLits(SearchOperator):
         unique_transitions = get_unique_transitions(transitions_for_action)
 
         for transition in unique_transitions:
-            # raise NotImplementedError("TODO: fix this like it's fixed in AddDeicticRefsFromObjs")
             preconds = ExplainExamples.get_overfitting_preconditions(transition)
             all_possible_additions.update(preconds)
         return all_possible_additions
@@ -855,6 +855,8 @@ class SplitOnLits(AddLits):
     def get_children(self, action_rule_set):
         for i in range(len(action_rule_set.ndrs)):
             for new_lit in self._all_possible_additions:
+                # if new_lit.predicate.name == "start":
+                    # import ipdb; ipdb.set_trace()
                 # No use adding a lit that's already there
                 if new_lit in action_rule_set.ndrs[i].preconditions or \
                    Not(new_lit) in action_rule_set.ndrs[i].preconditions:
@@ -879,18 +881,18 @@ def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
-    # add_lits = AddLits(transitions_for_action)
+    add_lits = AddLits(transitions_for_action)
     # drop_rules = DropRules(transitions_for_action)
     # drop_lits = DropLits(transitions_for_action)
     # drop_objects = DropObjects(transitions_for_action)
-    # split_on_lits = SplitOnLits(transitions_for_action)
+    split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
         explain_examples, 
-        # add_lits, 
+        add_lits, 
         # drop_rules,
         # drop_lits,
-        # split_on_lits,
+        split_on_lits,
         # drop_objects,
     ]
 
