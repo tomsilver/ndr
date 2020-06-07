@@ -732,36 +732,36 @@ def test_system():
     # print("Blocks integration test passed.")
 
     # # Test NDRBlocks
-    # # with nostdout():
-    # training_env = NDRBlocksEnv()
-    # training_env.seed(seed)
-    # training_data = collect_training_data(training_env)
-    # training_env.close()
-    # rule_set = learn_rule_set(training_data)
-    # test_env = NDRBlocksEnv()
-    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #     num_problems=100)
-    # test_env.close()
-    # assert 40 < np.sum(test_results) < 60
-    # print("NDRBlocks integration test passed.")
+    # with nostdout():
+    training_env = NDRBlocksEnv()
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = NDRBlocksEnv()
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=100)
+    test_env.close()
+    assert 40 < np.sum(test_results) < 60
+    print("NDRBlocks integration test passed.")
 
     # # Test TSP
     # with nostdout():
-    training_env = gym.make("PDDLEnvTsp-v0")
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env,
-        max_num_trials=5000,
-        num_transitions_per_problem=100,
-        max_transitions_per_action=2500,)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = gym.make("PDDLEnvTspTest-v0")
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-        num_problems=5,
-        max_num_steps=10000)
-    test_env.close()
-    assert np.sum(test_results) == 5
-    print("TSP integration test passed.")
+    # training_env = gym.make("PDDLEnvTsp-v0")
+    # training_env.seed(seed)
+    # training_data = collect_training_data(training_env,
+    #     max_num_trials=5000,
+    #     num_transitions_per_problem=100,
+    #     max_transitions_per_action=2500,)
+    # training_env.close()
+    # rule_set = learn_rule_set(training_data)
+    # test_env = gym.make("PDDLEnvTspTest-v0")
+    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+    #     num_problems=5,
+    #     max_num_steps=10000)
+    # test_env.close()
+    # assert np.sum(test_results) == 5
+    # print("TSP integration test passed.")
 
     # Test PybulletBlocksEnv
     # with nostdout():
