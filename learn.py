@@ -14,7 +14,7 @@ import abc
 
 ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
-VERBOSE = True
+VERBOSE = False
 DEBUG = False
 
 ## Generic search
