@@ -173,12 +173,12 @@ def run_test_suite(rule_set, env, outfile=None, num_problems=10, seed_start=1000
 def main():
     seed = 0
 
-    # training_env = PybulletBlocksEnv(use_gui=False)  #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4')
+    training_env = PybulletBlocksEnv(use_gui=False)  #record_low_level_video=True, video_out='/tmp/lowlevel_training.mp4')
     # training_env = gym.make("PDDLEnvBlocks-v0")
     # training_env = gym.make("PDDLEnvHanoi-v0")
     # training_env = gym.make("PDDLEnvTsp-v0")
     # training_env = gym.make("PDDLEnvDoors-v0")
-    training_env = gym.make("PDDLEnvRearrangement-v0")
+    # training_env = gym.make("PDDLEnvRearrangement-v0")
     # training_env = gym.make("PDDLEnvFerry-v0")
     # training_env.seed(seed)
     data_outfile = "data/{}_training_data.pkl".format(get_env_id(training_env))

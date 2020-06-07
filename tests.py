@@ -150,7 +150,7 @@ def test_planning():
     assert total_returns == 6
 
 
-def run_integration_test(training_data, test_transitions):
+def run_integration_test(training_data, test_transitions, expect_deterministic=True):
     """Assumes deterministic
     """
     rule_set = learn_rule_set(training_data)
@@ -159,10 +159,11 @@ def run_integration_test(training_data, test_transitions):
         print_rule_set(rule_set)
     
     # Make sure rules are deterministic
-    for rules in rule_set.values():
-        for rule in rules.ndrs:
-            for p in rule.effect_probs:
-                assert abs(p) < 1e-6 or abs(1-p) < 1e-6
+    if expect_deterministic:
+        for rules in rule_set.values():
+            for rule in rules.ndrs:
+                for p in rule.effect_probs:
+                    assert abs(p) < 1e-6 or abs(1-p) < 1e-6
 
     # Test predictions
     for s, a, effs in test_transitions:
@@ -484,12 +485,12 @@ def test_integration5():
             # different graph
             ({ Connected('a', 'b'), Start('a'),
                In('a'),
-               Visited('a'),Notvisited('b'), Notcomplete('path'),},
+               Visited('a'), Notvisited('b'), Notcomplete('path'),},
              TSPMoveTo('a'),
              set()),
             ({ Connected('a', 'b'), Start('a'),
                In('a'),
-               Visited('a'),Notvisited('b'), Notcomplete('path'),},
+               Visited('a'), Notvisited('b'), Notcomplete('path'),},
              TSPMoveTo('b'),
              { In('b'), Anti(In('a')), Visited('b'), Anti(Notvisited('b')) }),
         ],
@@ -500,6 +501,79 @@ def test_integration5():
     ]
 
     return run_integration_test(training_data, test_transitions)
+
+def test_integration6():
+    # Minimal noise test
+    print("Running integration test 6...")
+
+    training_data = {
+        Place : [
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # repeat
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # repeat
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # noise
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1')), Anti(IsPawn('o2'))},
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o3'),
+         {Anti(Holding('o3'))},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+         Place('o3'),
+         set(),
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o1'),
+         set(),
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions, expect_deterministic=False)
 
 def test_system():
     seed = 0
@@ -638,5 +712,6 @@ if __name__ == "__main__":
     # test_integration3()
     # test_integration4()
     # test_integration5()
-    test_system()
+    test_integration6()
+    # test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))
