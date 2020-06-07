@@ -34,8 +34,21 @@ MoveTo = Predicate('MoveTo', 1, var_types=[StaticType])
 Pick = Predicate('Pick', 1, var_types=[MoveableType])
 Place = Predicate('Place', 1, var_types=[MoveableType])
 Pet = Predicate('Pet', 1, var_types=[MoveableType])
+PutOn = Predicate('PutOn', 1, var_types=[MoveableType])
 WantHolding = Predicate('WantHolding', 1, var_types=[MoveableType])
 WantAt = Predicate('WantAt', 2, var_types=[MoveableType, StaticType])
+On = Predicate('On', 2, var_types=[MoveableType, MoveableType])
+
+PlaceType = Type('place')
+PathType = Type('path')
+In = Predicate('in', 1, var_types=[PlaceType])
+Visited = Predicate('visited', 1, var_types=[PlaceType])
+Notvisited = Predicate('not-visited', 1, var_types=[PlaceType])
+Complete = Predicate('complete', 1, var_types=[PathType])
+Notcomplete = Predicate('not-complete', 1, var_types=[PathType])
+Connected = Predicate('connected', 2, var_types=[PlaceType, PlaceType])
+Start = Predicate('start', 1, var_types=[PlaceType])
+TSPMoveTo = Predicate('moveto', 1, var_types=[PlaceType])
 
 
 def test_ndr():
@@ -139,7 +152,7 @@ def test_planning():
     assert total_returns == 6
 
 
-def run_integration_test(training_data, test_transitions):
+def run_integration_test(training_data, test_transitions, expect_deterministic=True):
     """Assumes deterministic
     """
     rule_set = learn_rule_set(training_data)
@@ -148,10 +161,11 @@ def run_integration_test(training_data, test_transitions):
         print_rule_set(rule_set)
     
     # Make sure rules are deterministic
-    for rules in rule_set.values():
-        for rule in rules.ndrs:
-            for p in rule.effect_probs:
-                assert abs(p) < 1e-6 or abs(1-p) < 1e-6
+    if expect_deterministic:
+        for rules in rule_set.values():
+            for rule in rules.ndrs:
+                for p in rule.effect_probs:
+                    assert abs(p) < 1e-6 or abs(1-p) < 1e-6
 
     # Test predictions
     for s, a, effs in test_transitions:
@@ -362,70 +376,347 @@ def test_integration4():
 
     return run_integration_test(training_data, test_transitions)
 
+def test_integration5():
+    print("Running integration test 5...")
+
+    training_data = {
+        TSPMoveTo : [
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             { Visited('b'), In('b'), Anti(In('a')), Anti(Notvisited('b'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('a'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Notvisited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('c'),
+             { Visited('c'), In('c'), Anti(In('b')), Anti(Notvisited('c'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('b'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             set()),
+            # this is a crucial example!
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('c'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('b'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'),
+               Connected('c', 'b'), Connected('d', 'a'), Start('a'),
+               In('d'),
+               Visited('a'), Visited('b'), Visited('c'), Visited('d'),
+               Notcomplete('path'),},
+             TSPMoveTo('a'),
+             { In('a'), Anti(In('d')), Anti(Notcomplete('path')), Complete('path')}),
+            # different graph
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'), 
+               Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
+             TSPMoveTo('d'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notvisited('c'), Notvisited('d'), 
+               Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
+             TSPMoveTo('b'),
+             { Visited('b'), In('b'), Anti(In('a')), Anti(Notvisited('b'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('c'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
+             TSPMoveTo('e'),
+             { Visited('e'), In('e'), Anti(In('c')), Anti(Notvisited('e'))}),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('f'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Visited('e'), Visited('f'), Notcomplete('path'),},
+             TSPMoveTo('d'),
+             set()),
+            # crucial example
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('d'),
+               Visited('a'), Visited('b'), Visited('c'), Visited('d'), 
+               Notvisited('e'), Notvisited('f'), Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('f'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Visited('e'), Visited('f'), Notcomplete('path'),},
+             TSPMoveTo('c'),
+             set()),
+            ({ Connected('a', 'b'), Connected('b', 'c'), Connected('c', 'd'), Connected('d', 'c'),
+               Connected('c', 'e'), Connected('e', 'f'), Connected('f', 'a'), Start('a'),
+               In('f'),
+               Visited('a'), Visited('b'), Visited('c'), Notvisited('d'), 
+               Visited('e'), Visited('f'), Notcomplete('path'),},
+             TSPMoveTo('a'),
+             { In('a'), Anti(In('f')), Anti(Notcomplete('path')), Complete('path')}),
+            # different graph
+            ({ Connected('a', 'b'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notcomplete('path'),},
+             TSPMoveTo('a'),
+             set()),
+            ({ Connected('a', 'b'), Start('a'),
+               In('a'),
+               Visited('a'), Notvisited('b'), Notcomplete('path'),},
+             TSPMoveTo('b'),
+             { In('b'), Anti(In('a')), Visited('b'), Anti(Notvisited('b')) }),
+        ],
+    }
+
+    # todo
+    test_transitions = [
+    ]
+
+    return run_integration_test(training_data, test_transitions)
+
+def test_integration6():
+    # Minimal noise test
+    print("Running integration test 6...")
+
+    training_data = {
+        Place : [
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # repeat
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # repeat
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+             Place('o2'),
+             {Anti(Holding('o2'))},
+            ),
+            # noise
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             Place('o1'),
+             {Anti(Holding('o1')), Anti(IsPawn('o2'))},
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o3'),
+         {Anti(Holding('o3'))},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+         Place('o3'),
+         set(),
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o3')},
+         Place('o1'),
+         set(),
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions, expect_deterministic=False)
+
+def test_integration7():
+    # Noisy puton test
+    print("Running integration test 7...")
+
+    training_data = {
+        PutOn : [
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o2'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o3'),
+             {Anti(Holding('o1')), On('o1', 'o3')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o2'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o3'),
+             {Anti(Holding('o1')), On('o1', 'o2')},
+            ),
+            # this is an important one
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+             PutOn('o3'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             set(),
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             {Anti(Holding('o1'))},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1')},
+             PutOn('o1'),
+             {Anti(Holding('o1')), On('o1', 'o3')},
+            ),
+            ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3')},
+             PutOn('o2'),
+             set(),
+            ),
+        ]
+    }
+
+    test_transitions = [
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2')},
+         PutOn('o1'),
+         {Anti(Holding('o2')), On('o2', 'o1')},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o2'), On('o1', 'o3')},
+         PutOn('o1'),
+         {Anti(Holding('o2')), On('o2', 'o1')},
+        ),
+        ({IsPawn('o1'), IsPawn('o2'), IsPawn('o3'), Holding('o1'), On('o2', 'o3')},
+         PutOn('o3'),
+         {Anti(Holding('o1'))},
+        ),
+    ]
+
+    return run_integration_test(training_data, test_transitions, expect_deterministic=False)
+
+def test_negative_preconditions():
+    # This came up in the course of integration test 7
+
+    # ?x0 must bind to o0 and ?x1 must bind to o1, so ?x2 must bind to o2
+    conds = [ PutOn("?x0"), Holding("?x1"), IsPawn("?x2"), Not(On("?x2", "?x0")) ]
+    kb = { PutOn('o0'), IsPawn('o0'), IsPawn('o1'), IsPawn('o2'), Holding('o1'), }
+    assignments = find_satisfying_assignments(kb, conds, allow_redundant_variables=False)
+    assert len(assignments) == 1
+
+    # should be the same, even though IsPawn("?x2") is removed...
+    conds = [ PutOn("?x0"), Holding("?x1"), Not(On("?x2", "?x0")) ]
+    kb = { PutOn('o0'), IsPawn('o0'), IsPawn('o1'), IsPawn('o2'), Holding('o1'), }
+    assignments = find_satisfying_assignments(kb, conds, allow_redundant_variables=False)
+    assert len(assignments) == 1
+
+
+
 def test_system():
     seed = 0
     print("Running end-to-end tests (this will take a long time)")
 
-    # Test Hanoi
+    # uncomment and indent below to suppress printouts
     # with nostdout():
-    #     training_env = gym.make("PDDLEnvHanoi-v0")
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         num_transitions_per_problem=10,
-    #         max_transitions_per_action=500)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = gym.make("PDDLEnvHanoiTest-v0")
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=5,
-    #         max_num_steps=10000)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 5
-    # print("Hanoi integration test passed.")
+
+    # Test Hanoi
+    training_env = gym.make("PDDLEnvHanoi-v0")
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        num_transitions_per_problem=10,
+        max_transitions_per_action=500)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = gym.make("PDDLEnvHanoiTest-v0")
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=5,
+        max_num_steps=10000)
+    test_env.close()
+    assert np.sum(test_results) == 5
+    print("Hanoi integration test passed.")
 
     # Test Doors
-    # Currently broken due to two preconditions involving non-referenced objects
-    # with nostdout():
-    #     training_env = gym.make("PDDLEnvDoors-v0")
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         num_transitions_per_problem=10,
-    #         max_transitions_per_action=500)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = gym.make("PDDLEnvDoorsTest-v0")
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=5,
-    #         max_num_steps=10000)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 5
-    # print("Doors integration test passed.")
+    training_env = gym.make("PDDLEnvDoors-v0")
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        num_transitions_per_problem=20,
+        max_transitions_per_action=1000)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = gym.make("PDDLEnvDoorsTest-v0")
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=5,
+        max_num_steps=10000)
+    test_env.close()
+    assert np.sum(test_results) == 5
+    print("Doors integration test passed.")
 
-    # # Test Rearrangement
-    # with nostdout():
-    #     training_env = gym.make("PDDLEnvRearrangement-v0")
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         num_transitions_per_problem=10,
-    #         max_transitions_per_action=100)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = gym.make("PDDLEnvRearrangement-v0")
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=5,
-    #         max_num_steps=10000)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 5
-    # print("Rearrangement integration test passed.")
+    # Test Rearrangement
+    training_env = gym.make("PDDLEnvRearrangement-v0")
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        num_transitions_per_problem=10,
+        max_transitions_per_action=500)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = gym.make("PDDLEnvRearrangement-v0")
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=5,
+        max_num_steps=10000)
+    test_env.close()
+    assert np.sum(test_results) == 5
+    print("Rearrangement integration test passed.")
 
     # Test deterministic blocks
-    # with nostdout():
     training_env = gym.make("PDDLEnvBlocks-v0")
     training_env.seed(seed)
     training_data = collect_training_data(training_env,
-        max_num_trials=5000,
+        max_num_trials=10000,
         num_transitions_per_problem=10,
-        max_transitions_per_action=500,)
+        max_transitions_per_action=1000,)
     training_env.close()
     rule_set = learn_rule_set(training_data)
     test_env = gym.make("PDDLEnvBlocksTest-v0")
@@ -433,69 +724,73 @@ def test_system():
         num_problems=5,
         max_num_steps=50)
     test_env.close()
-    assert np.sum(test_results) == 5
+    if not np.sum(test_results) == 5:
+        import ipdb; ipdb.set_trace()
     print("Blocks integration test passed.")
 
-    # # Test NDRBlocks
-    # with nostdout():
-    #     training_env = NDRBlocksEnv()
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = NDRBlocksEnv()
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=100)
-    #     test_env.close()
-    #     assert 40 < np.sum(test_results) < 60
-    # print("NDRBlocks integration test passed.")
+    # Test NDRBlocks
+    training_env = NDRBlocksEnv()
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = NDRBlocksEnv()
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=100)
+    test_env.close()
+    assert 40 < np.sum(test_results) < 60
+    print("NDRBlocks integration test passed.")
 
-    # # Test TSP
-    # with nostdout():
-    #     training_env = gym.make("PDDLEnvTsp-v0")
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         max_num_trials=5000,
-    #         num_transitions_per_problem=100,
-    #         max_transitions_per_action=2500,)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = gym.make("PDDLEnvTspTest-v0")
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-    #         num_problems=5,
-    #         max_num_steps=10000)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 5
-    # print("TSP integration test passed.")
+    # Test TSP
+    training_env = gym.make("PDDLEnvTsp-v0")
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        max_num_trials=5000,
+        num_transitions_per_problem=100,
+        max_transitions_per_action=2500,)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = gym.make("PDDLEnvTspTest-v0")
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+        num_problems=5,
+        max_num_steps=10000)
+    test_env.close()
+    assert np.sum(test_results) == 5
+    print("TSP integration test passed.")
 
-    # # Test PybulletBlocksEnv
-    # with nostdout():
-    #     training_env = PybulletBlocksEnv(use_gui=False)
-    #     training_env.seed(seed)
-    #     training_data = collect_training_data(training_env,
-    #         max_num_trials=5000,
-    #         num_transitions_per_problem=1,
-    #         max_transitions_per_action=500)
-    #     training_env.close()
-    #     rule_set = learn_rule_set(training_data)
-    #     test_env = PybulletBlocksEnv(use_gui=False)
-    #     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
-    #     test_env.close()
-    #     assert np.sum(test_results) == 8.0
-    # print("PybulletBlocksEnv integration test passed.")
+    # Test PybulletBlocksEnv
+    training_env = PybulletBlocksEnv(use_gui=False)
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        # Cache this because it takes a very long time to create the dataset
+        "/tmp/pybullet_blocks_env_integration_test_dataset.pkl",
+        max_num_trials=5000,
+        num_transitions_per_problem=1,
+        max_transitions_per_action=500,
+        verbose=True)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = PybulletBlocksEnv(use_gui=False)
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+    test_env.close()
+    assert np.sum(test_results) == 8.0
+    print("PybulletBlocksEnv integration test passed.")
 
-    # print("Integration tests passed.")
+    print("Integration tests passed.")
 
 
 if __name__ == "__main__":
     import time
     start_time = time.time()
-    # test_ndr()
-    # test_ndr_set()
-    # test_planning()
-    # test_integration1()
-    # test_integration2()
-    # test_integration3()
-    # test_integration4()
+    test_ndr()
+    test_ndr_set()
+    test_planning()
+    test_integration1()
+    test_integration2()
+    test_integration3()
+    test_integration4()
+    test_integration5()
+    test_integration6()
+    test_integration7()
     test_system()
     print("Tests completed in {} seconds".format(time.time() - start_time))

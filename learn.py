@@ -12,7 +12,7 @@ import time
 import abc
 
 
-ALPHA = 1. # Weight on rule set size penalty
+ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
 VERBOSE = True
 DEBUG = False
@@ -125,7 +125,7 @@ def get_unique_transitions(transitions):
         if hashed not in seen_hashes:
             unique_transitions.append((s, a, e))
         seen_hashes.add(hashed)
-    return unique_transitions
+    return sorted(unique_transitions)
 
 ## Scoring
 def get_pen(rule):
@@ -149,8 +149,8 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
         # Other outcome
         if NOISE_OUTCOME not in outcome:
             transition_likelihood += prob
-        if transition_likelihood == 0.:
-            import ipdb; ipdb.set_trace()
+        # if transition_likelihood == 0.:
+            # import ipdb; ipdb.set_trace()
     except MultipleOutcomesPossible:
         state, action, effects = transition
         sigma = rule.find_substitutions(state, action)
@@ -281,8 +281,6 @@ def learn_params_analytically(rule, covered_transitions):
     if denom == 0:
         rule.effect_probs = np.ones(len(effect_counts), dtype=np.float32) / len(effect_counts)
     else:
-        # if len(rule.preconditions) == 3 and sum([lit.predicate.name == "At" for lit in rule.preconditions]) == 2:
-            # import ipdb; ipdb.set_trace()
         rule.effect_probs = np.array(effect_counts) / np.sum(effect_counts)
 
 
@@ -503,19 +501,26 @@ class ExplainExamples(SearchOperator):
 
     Tries to follow the pseudocode in the paper as faithfully as possible
     """
+    max_transitions = 25
+
     def __init__(self, action, transitions_for_action):
         self.action = action
         self.transitions_for_action = transitions_for_action
         self.unique_transitions = get_unique_transitions(transitions_for_action)
+        self.rng = np.random.RandomState(0)
 
     def _get_default_transitions(self, action_rule_set):
         """Get unique transitions that are covered by the default rule
         """
+        self.rng.shuffle(self.unique_transitions)
+
         default_transitions = []
         for transition in self.unique_transitions:
             covering_rule = action_rule_set.find_rule(transition)
             if covering_rule == action_rule_set.default_ndr:
                 default_transitions.append(transition)
+            if len(default_transitions) >= self.max_transitions:
+                break
         return default_transitions
 
     @staticmethod
@@ -651,6 +656,7 @@ class ExplainExamples(SearchOperator):
         init_score = op.get_score(init_state)
         best_preconditions = run_greedy_search([op], init_state, init_score,
             greedy_break=True)
+        # import ipdb; ipdb.set_trace()
         rule.preconditions = best_preconditions
         if DEBUG: import ipdb; ipdb.set_trace()
         # Greedily trim objects
@@ -813,7 +819,6 @@ class AddLits(SearchOperator):
         unique_transitions = get_unique_transitions(transitions_for_action)
 
         for transition in unique_transitions:
-            # raise NotImplementedError("TODO: fix this like it's fixed in AddDeicticRefsFromObjs")
             preconds = ExplainExamples.get_overfitting_preconditions(transition)
             all_possible_additions.update(preconds)
         return all_possible_additions
@@ -830,7 +835,8 @@ class AddLits(SearchOperator):
                 new_ndr.preconditions.append(new_lit)
                 # Trim preconditions
                 # import ipdb; ipdb.set_trace()
-                ExplainExamples.trim_preconditions(new_ndr, self.transitions_for_action)
+                # This line leads to issues b/c preconditions may overlap
+                # ExplainExamples.trim_preconditions(new_ndr, self.transitions_for_action)
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
                 # Induce new outcomes for modified ndr
                 induce_outcomes(new_ndr, partitions[i])
@@ -848,6 +854,8 @@ class SplitOnLits(AddLits):
     def get_children(self, action_rule_set):
         for i in range(len(action_rule_set.ndrs)):
             for new_lit in self._all_possible_additions:
+                # if new_lit.predicate.name == "start":
+                    # import ipdb; ipdb.set_trace()
                 # No use adding a lit that's already there
                 if new_lit in action_rule_set.ndrs[i].preconditions or \
                    Not(new_lit) in action_rule_set.ndrs[i].preconditions:
@@ -872,19 +880,19 @@ def get_search_operators(action, transitions_for_action):
     """Main search operators
     """
     explain_examples = ExplainExamples(action, transitions_for_action)
-    # add_lits = AddLits(transitions_for_action)
-    # drop_rules = DropRules(transitions_for_action)
-    # drop_lits = DropLits(transitions_for_action)
-    # drop_objects = DropObjects(transitions_for_action)
-    # split_on_lits = SplitOnLits(transitions_for_action)
+    add_lits = AddLits(transitions_for_action)
+    drop_rules = DropRules(transitions_for_action)
+    drop_lits = DropLits(transitions_for_action)
+    drop_objects = DropObjects(transitions_for_action)
+    split_on_lits = SplitOnLits(transitions_for_action)
 
     return [
         explain_examples, 
-        # add_lits, 
-        # drop_rules,
-        # drop_lits,
-        # split_on_lits,
-        # drop_objects,
+        add_lits, 
+        drop_rules,
+        drop_lits,
+        split_on_lits,
+        drop_objects,
     ]
 
 ## Main
