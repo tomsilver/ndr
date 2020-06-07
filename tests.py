@@ -733,17 +733,17 @@ def test_system():
 
     # # Test NDRBlocks
     # with nostdout():
-    training_env = NDRBlocksEnv()
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = NDRBlocksEnv()
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-        num_problems=100)
-    test_env.close()
-    assert 40 < np.sum(test_results) < 60
-    print("NDRBlocks integration test passed.")
+    # training_env = NDRBlocksEnv()
+    # training_env.seed(seed)
+    # training_data = collect_training_data(training_env)
+    # training_env.close()
+    # rule_set = learn_rule_set(training_data)
+    # test_env = NDRBlocksEnv()
+    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
+    #     num_problems=100)
+    # test_env.close()
+    # assert 40 < np.sum(test_results) < 60
+    # print("NDRBlocks integration test passed.")
 
     # # Test TSP
     # with nostdout():
@@ -765,20 +765,20 @@ def test_system():
 
     # Test PybulletBlocksEnv
     # with nostdout():
-    # training_env = PybulletBlocksEnv(use_gui=False)
-    # training_env.seed(seed)
-    # training_data = collect_training_data(training_env,
-    #     max_num_trials=5000,
-    #     num_transitions_per_problem=1,
-    #     max_transitions_per_action=500,
-    #     verbose=True)
-    # training_env.close()
-    # rule_set = learn_rule_set(training_data)
-    # test_env = PybulletBlocksEnv(use_gui=False)
-    # test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
-    # test_env.close()
-    # assert np.sum(test_results) == 8.0
-    # print("PybulletBlocksEnv integration test passed.")
+    training_env = PybulletBlocksEnv(use_gui=False)
+    training_env.seed(seed)
+    training_data = collect_training_data(training_env,
+        max_num_trials=5000,
+        num_transitions_per_problem=1,
+        max_transitions_per_action=500,
+        verbose=True)
+    training_env.close()
+    rule_set = learn_rule_set(training_data)
+    test_env = PybulletBlocksEnv(use_gui=False)
+    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
+    test_env.close()
+    assert np.sum(test_results) == 8.0
+    print("PybulletBlocksEnv integration test passed.")
 
     # print("Integration tests passed.")
 
