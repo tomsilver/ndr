@@ -2,7 +2,7 @@
 
 Based on the environment described in ZPK.
 """
-from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti
+from pddlgym.structs import Predicate, LiteralConjunction, Type, Anti, State
 from pddlgym.spaces import LiteralSpace, LiteralSetSpace
 from ndr.utils import VideoWrapper
 
@@ -513,7 +513,7 @@ class PickupController(StateMachineController):
         # Check if the object is clear
         block_name = objects[0].name
         # Could recompute, but am lazy
-        pred_obs = get_observation(obs)
+        pred_obs = get_observation(obs).literals
         if clear(block_name) not in pred_obs and \
             holding(block_name) not in pred_obs:
             return True
@@ -583,7 +583,7 @@ class PutonController(StateMachineController):
         # Check if the object is clear
         block_name = objects[0].name
         # Could recompute, but am lazy
-        if clear(block_name) not in get_observation(obs):
+        if clear(block_name) not in get_observation(obs).literals:
             return True
         return False
 
@@ -623,7 +623,7 @@ class PutontableController(StateMachineController):
     # This makes learning a lot easier...
     def terminate_early(self, objects, obs):
         # Could recompute, but am lazy
-        if handempty() in get_observation(obs):
+        if handempty() in get_observation(obs).literals:
             return True
         return False
 
@@ -752,7 +752,13 @@ def get_observation(state):
             for below, above in zip(pile[:-1], pile[1:]):
                 obs.add(on(above, below))
 
-    return obs
+    # Extract objects
+    all_objects = {o for lit in obs for o in lit.variables}
+
+    # goal set in superclass
+    state = State(frozenset(obs), frozenset(all_objects), None)
+
+    return state
 
 # TODO move this somewhere else, it is general
 def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, obs_preds,
@@ -774,8 +780,6 @@ def create_abstract_pybullet_env(low_level_cls, controllers, get_observation, ob
             low_level_obs, debug_info = self.low_level_env.reset()
             obs = get_observation(low_level_obs)
             self._previous_low_level_obs = low_level_obs
-            self._problem_objects = sorted({ v for lit in obs for v in lit.variables })
-            self.action_space.update(self._problem_objects)
             return obs, debug_info
 
         def step(self, action):
@@ -829,17 +833,17 @@ class PybulletBlocksEnv(BasePybulletBlocksEnv):
     def reset(self):
         while True:
             self._goal = self._goals[self.low_level_env.np_random.choice(self._num_goals)]
-            obs, _ = super().reset()
-            if self._goal.holds(obs):
+            obs, debug_info = super().reset()
+            if self._goal.holds(obs.literals):
                 continue
-            debug_info = {"goal" : self._goal}
+            obs = obs.with_goal(self._goal)
             return obs, debug_info
 
     def step(self, action):
-        obs, _, _, _ = super().step(action)
-        reward = 1.0 if self._goal.holds(obs) else 0.0
+        obs, _, _, debug_info = super().step(action)
+        reward = 1.0 if self._goal.holds(obs.literals) else 0.0
         done = reward == 1.
-        debug_info = {"goal" : self._goal}
+        obs = obs.with_goal(self._goal)
         return obs, reward, done, debug_info
 
 
