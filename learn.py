@@ -14,8 +14,8 @@ import abc
 
 ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
-VERBOSE = False
-DEBUG = False
+VERBOSE = True
+DEBUG = True
 
 ## Generic search
 class SearchOperator:
@@ -281,8 +281,6 @@ def learn_params_analytically(rule, covered_transitions):
     if denom == 0:
         rule.effect_probs = np.ones(len(effect_counts), dtype=np.float32) / len(effect_counts)
     else:
-        # if len(rule.preconditions) == 3 and sum([lit.predicate.name == "At" for lit in rule.preconditions]) == 2:
-            # import ipdb; ipdb.set_trace()
         rule.effect_probs = np.array(effect_counts) / np.sum(effect_counts)
 
 
@@ -767,8 +765,6 @@ class DropLits(SearchOperator):
                 new_ndr = new_rule_set.ndrs[i]
                 del new_ndr.preconditions[drop_i]
                 # Validate
-                # if any("NotOn" in str(p) for p in ndr.preconditions):
-                    # import ipdb; ipdb.set_trace()
                 if not new_rule_set.is_valid(self.transitions_for_action):
                     continue
                 partitions = new_rule_set.partition_transitions(self.transitions_for_action)
