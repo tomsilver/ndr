@@ -14,7 +14,7 @@ import abc
 
 ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
-VERBOSE = True
+VERBOSE = False
 DEBUG = False
 
 ## Generic search
@@ -419,7 +419,8 @@ def create_default_rule_set(action, transitions_for_action):
     variable_names = [next(variable_name_generator) for _ in range(action.arity)]
     lifted_action = action(*variable_names)
     ndr = NDR(action=lifted_action, preconditions=[], effect_probs=[], effects=[])
-    induce_outcomes(ndr, transitions_for_action)
+    covered_transitions = ndr.get_explained_transitions(transitions_for_action)
+    induce_outcomes(ndr, covered_transitions)
     action_rule_set = NDRSet(lifted_action, [], default_ndr=ndr)
     score = score_action_rule_set(action_rule_set, transitions_for_action)
     return score, action_rule_set

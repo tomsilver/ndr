@@ -1,4 +1,5 @@
-from pddlgym.structs import Predicate, ground_literal
+from pddlgym.structs import Predicate, ground_literal, LiteralConjunction
+from pddlgym.parser import Operator
 from pddlgym.inference import find_satisfying_assignments
 import numpy as np
 
@@ -203,6 +204,17 @@ class NDR:
         lifted_effects = self._effects[np.argmax(self._effect_probs)]
         sigma = self.find_substitutions(state, action)
         return { ground_literal(e, sigma) for e in lifted_effects }
+
+    def determinize(self, name_suffix=0):
+        """Create a deterministic operators with the most likely effects
+        """
+        op_name = "{}{}".format(self.action.predicate.name, name_suffix)
+        probs, effs = self.effect_probs, self.effects
+        max_idx = np.argmax(probs)
+        max_effects = LiteralConjunction(sorted(effs[max_idx]))
+        preconds = LiteralConjunction(sorted(self.preconditions) + [self.action])
+        params = sorted({ v for lit in preconds.literals for v in lit.variables })
+        return Operator(op_name, params, preconds, max_effects)
 
 
 class NDRSet:
