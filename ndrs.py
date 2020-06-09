@@ -201,12 +201,22 @@ class NDR:
         objs = set(o for lit in effects for o in lit.variables)
         return self.objects_are_referenced(state, action, objs)
 
+    def _predict(self, state, action, ind):
+        lifted_effects = self._effects[ind]
+        sigma = self.find_substitutions(state, action)
+        return { ground_literal(e, sigma) for e in lifted_effects }
+
     def predict_max(self, state, action):
         """Make the most likely prediction
         """
-        lifted_effects = self._effects[np.argmax(self._effect_probs)]
-        sigma = self.find_substitutions(state, action)
-        return { ground_literal(e, sigma) for e in lifted_effects }
+        ind = np.argmax(self._effect_probs)
+        return self._predict(state, action, ind)
+
+    def predict_sample(self, state, action):
+        """Sample a prediction
+        """
+        ind = np.random.choice(len(self._effect_probs), p=self._effect_probs)
+        return self._predict(state, action, ind)
 
     def determinize(self, name_suffix=0):
         """Create a deterministic operators with the most likely effects
@@ -299,6 +309,12 @@ class NDRSet:
         """
         rule = self.find_rule((state, action, None))
         return rule.predict_max(state, action)
+
+    def predict_sample(self, state, action):
+        """Sample a prediction
+        """
+        rule = self.find_rule((state, action, None))
+        return rule.predict_sample(state, action)
 
     def is_valid(self, transitions):
         """Make sure each transition is covered once
