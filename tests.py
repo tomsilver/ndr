@@ -5,6 +5,7 @@ from ndr.main import *
 from ndr.utils import nostdout
 import gym
 import pddlgym
+import pybullet_abstraction_envs
 import numpy as np
 
 
@@ -759,7 +760,7 @@ def test_system():
     print("TSP integration test passed.")
 
     # Test PybulletBlocksEnv
-    training_env = PybulletBlocksEnv(use_gui=False)
+    training_env = gym.make("PDDLEnvPybulletBlocks-v0") #PybulletBlocksEnv(use_gui=False)
     training_env.seed(seed)
     training_data = collect_training_data(training_env,
         # Cache this because it takes a very long time to create the dataset
@@ -770,7 +771,8 @@ def test_system():
         verbose=True)
     training_env.close()
     rule_set = learn_rule_set(training_data)
-    test_env = PybulletBlocksEnv(use_gui=False)
+    print_rule_set(rule_set)
+    test_env = gym.make("PDDLEnvPybulletBlocksTest-v0")  #PybulletBlocksEnv(use_gui=False)
     test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
     test_env.close()
     assert np.sum(test_results) == 8.0

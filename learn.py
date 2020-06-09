@@ -144,11 +144,12 @@ def get_transition_likelihood(transition, rule, p_min=P_MIN):
     try:
         effect_idx = rule.find_unique_matching_effect_index(transition)
         prob, outcome = rule.effect_probs[effect_idx], rule.effects[effect_idx]
-        # Noise outcome
-        transition_likelihood = p_min * prob
-        # Other outcome
+        # Non-noise outcome
         if NOISE_OUTCOME not in outcome:
-            transition_likelihood += prob
+            transition_likelihood = prob
+        # Noise outcome
+        else:
+            transition_likelihood = p_min * prob
         # if transition_likelihood == 0.:
             # import ipdb; ipdb.set_trace()
     except MultipleOutcomesPossible:

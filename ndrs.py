@@ -148,7 +148,10 @@ class NDR:
         cache_key = hash((frozenset(state), action, frozenset(effects)))
         if cache_key not in self._effect_cache:
             sigma = self.find_substitutions(state, action)
-            assert sigma is not None, "Rule assumed to cover transition"
+            try:
+                assert sigma is not None, "Rule assumed to cover transition"
+            except AssertionError:
+                import ipdb; ipdb.set_trace()
             selected_outcome_idx = None
             noise_outcome_idx = None
             for i, outcome in enumerate(self.effects):
