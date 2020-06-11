@@ -26,9 +26,11 @@ class SearchOperator:
 
 
 def run_greedy_search(search_operators, init_state, init_score, greedy_break=False,
-                      max_node_expansions=1000, rng=None, verbose=False):
+                      max_timeout=None, max_node_expansions=1000, rng=None, verbose=False):
     """Greedy search
     """
+    start_time = time.time()
+
     if rng is None:
         rng = np.random.RandomState(seed=0)
 
@@ -55,15 +57,20 @@ def run_greedy_search(search_operators, init_state, init_score, greedy_break=Fal
                         print("New best state:", state)
                     if greedy_break:
                         break
+                if max_timeout and (time.time() - start_time > max_timeout):
+                    print("WARNING: search timed out early")
+                    return state
         if not found_improvement:
             break
 
     return state
 
 def run_best_first_search(search_operators, init_state, init_score,
-                          max_node_expansions=1000, rng=None, verbose=False):
+                          max_timeout=None, max_node_expansions=1000, rng=None, verbose=False):
     """Best first search
     """
+    start_time = time.time()
+
     if rng is None:
         rng = np.random.RandomState(seed=0)
 
@@ -91,6 +98,9 @@ def run_best_first_search(search_operators, init_state, init_score,
                     if verbose:
                         print("New best score:", best_score)
                         print("New best state:", best_state)
+                if max_timeout and (time.time() - start_time > max_timeout):
+                    print("WARNING: search timed out early")
+                    return best_state
 
     return best_state
 
@@ -899,7 +909,7 @@ def get_search_operators(action, transitions_for_action):
 
 ## Main
 def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
-                    search_method="greedy"):
+                    max_timeout=None, search_method="greedy"):
     """Run the main search
     """
     rule_sets = {}
@@ -917,10 +927,10 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
 
         if search_method == "greedy":
             action_rule_set = run_greedy_search(search_operators, init_state, init_score, 
-                max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
+                max_timeout=max_timeout, max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
         elif search_method == "best_first":
             action_rule_set = run_best_first_search(search_operators, init_state, init_score, 
-                max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
+                max_timeout=max_timeout, max_node_expansions=max_node_expansions, rng=rng, verbose=VERBOSE)
         else:
             raise NotImplementedError()
 
