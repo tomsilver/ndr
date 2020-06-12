@@ -909,17 +909,32 @@ def get_search_operators(action, transitions_for_action):
 
 ## Main
 def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
-                    max_timeout=None, search_method="greedy"):
+                    max_timeout=None, max_action_batch_size=None, get_batch_probs=lambda x : None,
+                    init_rule_sets=None, search_method="greedy"):
     """Run the main search
     """
+    if rng is None:
+        rng = np.random.RandomState(seed=0)
+
     rule_sets = {}
 
     for action, transitions_for_action in transition_dataset.items():
         if VERBOSE:
             print("Running search for action", action)
 
+        if max_action_batch_size is not None and len(transitions_for_action) > max_action_batch_size:
+            batch_probs = get_batch_probs(transitions_for_action)
+            idxs = rng.choice(len(transitions_for_action), 
+                size=max_action_batch_size, replace=False, p=batch_probs)
+            transitions_for_action = [transitions_for_action[i] for i in idxs]
+
         search_operators = get_search_operators(action, transitions_for_action)
-        init_score, init_state = create_default_rule_set(action, transitions_for_action)
+
+        if init_rule_sets is None:
+            init_score, init_state = create_default_rule_set(action, transitions_for_action)
+        else:
+            init_state = init_rule_sets[action]
+            init_score = score_action_rule_set(init_state, transitions_for_action)
 
         if VERBOSE:
             print("Initial rule set (score={}):".format(init_score))
