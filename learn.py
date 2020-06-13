@@ -513,18 +513,19 @@ class ExplainExamples(SearchOperator):
 
     Tries to follow the pseudocode in the paper as faithfully as possible
     """
-    max_transitions = 25
 
-    def __init__(self, action, transitions_for_action):
+    def __init__(self, action, transitions_for_action, max_ee_transitions=np.inf, rng=None, **kwargs):
         self.action = action
         self.transitions_for_action = transitions_for_action
         self.unique_transitions = get_unique_transitions(transitions_for_action)
-        self.rng = np.random.RandomState(0)
+        self.max_transitions = max_ee_transitions
+        self.rng = rng
 
     def _get_default_transitions(self, action_rule_set):
         """Get unique transitions that are covered by the default rule
         """
-        self.rng.shuffle(self.unique_transitions)
+        if not np.isinf(self.max_transitions):
+            self.rng.shuffle(self.unique_transitions)
 
         default_transitions = []
         for transition in self.unique_transitions:
@@ -744,7 +745,7 @@ class ExplainExamples(SearchOperator):
 class DropRules(SearchOperator):
     """Search operator that drops one rule from the set
     """
-    def __init__(self, transitions_for_action):
+    def __init__(self, transitions_for_action, **kwargs):
         self.transitions_for_action = transitions_for_action
 
     def get_children(self, action_rule_set):
@@ -762,7 +763,7 @@ class DropRules(SearchOperator):
 class DropLits(SearchOperator):
     """Search operator that drops one lit per rule from the set
     """
-    def __init__(self, transitions_for_action):
+    def __init__(self, transitions_for_action, **kwargs):
         self.transitions_for_action = transitions_for_action
 
     def get_children(self, action_rule_set):
@@ -791,7 +792,7 @@ class DropLits(SearchOperator):
 class DropObjects(SearchOperator):
     """Search operator that drops all lits associated with one object in each rule set
     """
-    def __init__(self, transitions_for_action):
+    def __init__(self, transitions_for_action, **kwargs):
         self.transitions_for_action = transitions_for_action
 
     def get_children(self, action_rule_set):
@@ -821,7 +822,7 @@ class AddLits(SearchOperator):
     """Search operator that adds one lit per rule from the set
     """
 
-    def __init__(self, transitions_for_action):
+    def __init__(self, transitions_for_action, **kwargs):
         self.transitions_for_action = transitions_for_action
         self._all_possible_additions = self._get_all_possible_additions(transitions_for_action)
 
@@ -888,15 +889,15 @@ class SplitOnLits(AddLits):
                 yield score, new_rule_set
 
 
-def get_search_operators(action, transitions_for_action):
+def get_search_operators(action, transitions_for_action, **kwargs):
     """Main search operators
     """
-    explain_examples = ExplainExamples(action, transitions_for_action)
-    add_lits = AddLits(transitions_for_action)
-    drop_rules = DropRules(transitions_for_action)
-    drop_lits = DropLits(transitions_for_action)
-    drop_objects = DropObjects(transitions_for_action)
-    split_on_lits = SplitOnLits(transitions_for_action)
+    explain_examples = ExplainExamples(action, transitions_for_action, **kwargs)
+    add_lits = AddLits(transitions_for_action, **kwargs)
+    drop_rules = DropRules(transitions_for_action, **kwargs)
+    drop_lits = DropLits(transitions_for_action, **kwargs)
+    drop_objects = DropObjects(transitions_for_action, **kwargs)
+    split_on_lits = SplitOnLits(transitions_for_action, **kwargs)
 
     return [
         explain_examples, 
@@ -910,7 +911,7 @@ def get_search_operators(action, transitions_for_action):
 ## Main
 def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
                     max_timeout=None, max_action_batch_size=None, get_batch_probs=lambda x : None,
-                    init_rule_sets=None, search_method="greedy"):
+                    init_rule_sets=None, search_method="greedy", **kwargs):
     """Run the main search
     """
     if rng is None:
@@ -928,7 +929,7 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
                 size=max_action_batch_size, replace=False, p=batch_probs)
             transitions_for_action = [transitions_for_action[i] for i in idxs]
 
-        search_operators = get_search_operators(action, transitions_for_action)
+        search_operators = get_search_operators(action, transitions_for_action, rng=rng, **kwargs)
 
         if init_rule_sets is None:
             init_score, init_state = create_default_rule_set(action, transitions_for_action)
