@@ -21,11 +21,13 @@ class NDR:
     effect_probs : np.ndarray
     effects : [Literal]
     """
-    def __init__(self, action, preconditions, effect_probs, effects):
+    def __init__(self, action, preconditions, effect_probs, effects,
+                 allow_redundant_variables=False):
         self._action = action
         self._preconditions = preconditions
         self._effect_probs = effect_probs
         self._effects = effects
+        self._allow_redundant_variables = allow_redundant_variables
 
         assert isinstance(preconditions, list)
         assert len(effect_probs) == len(effects)
@@ -97,7 +99,8 @@ class NDR:
         preconditions = [p for p in self.preconditions]
         effect_probs = np.array(self.effect_probs)
         effects = [eff.copy() for eff in self.effects]
-        return NDR(action, preconditions, effect_probs, effects)
+        return NDR(action, preconditions, effect_probs, effects,
+            allow_redundant_variables=self._allow_redundant_variables)
 
     def find_substitutions(self, state, action):
         """Find a mapping from variables to objects in the state
@@ -109,12 +112,13 @@ class NDR:
             assert action.predicate == self.action.predicate
             conds = [self.action] + list(self.preconditions)
             assignments = find_satisfying_assignments(kb, conds,
-                allow_redundant_variables=False)
+                allow_redundant_variables=self._allow_redundant_variables)
             if len(assignments) != 1:
                 result = None
             else:
                 result = assignments[0]
-                assert len(result.values()) == len(set(result.values()))
+                if not self._allow_redundant_variables:
+                    assert len(result.values()) == len(set(result.values()))
             self._precondition_cache[cache_key] = result
         return self._precondition_cache[cache_key]
 
@@ -243,11 +247,14 @@ class NDRSet:
         If None, one is created. Only should be not
         None when an existing NDR is getting copied.
     """
-    def __init__(self, action, ndrs, default_ndr=None):
+    def __init__(self, action, ndrs, default_ndr=None,
+                 allow_redundant_variables=False):
         self.action = action
         self.ndrs = list(ndrs)
+        self._allow_redundant_variables = allow_redundant_variables
         if default_ndr is None:
-            self.default_ndr = self._create_default_ndr(action)
+            self.default_ndr = self._create_default_ndr(action,
+                allow_redundant_variables=allow_redundant_variables)
         else:
             self.default_ndr = default_ndr
 
@@ -268,13 +275,14 @@ class NDRSet:
         return len(self.ndrs) + 1
 
     @staticmethod
-    def _create_default_ndr(action):
+    def _create_default_ndr(action, allow_redundant_variables=False):
         """Either nothing or noise happens by default
         """
         preconditions = []
         effect_probs = [0.5, 0.5]
         effects = [{ NOISE_OUTCOME }, set()]
-        return NDR(action, preconditions, effect_probs, effects)
+        return NDR(action, preconditions, effect_probs, effects,
+            allow_redundant_variables=allow_redundant_variables)
 
     def find_rule(self, transition):
         """Find the (assumed unique) rule that covers this transition
