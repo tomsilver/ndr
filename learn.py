@@ -577,7 +577,8 @@ class ExplainExamples(SearchOperator):
         """Get unique transitions that are covered by the default rule
         """
         if not np.isinf(self.max_transitions):
-            self.rng.shuffle(self.unique_transitions)
+            # Make sure that nontrivial transitions are first, otherwise random
+            self.unique_transitions.sort(key=lambda t: (len(t[2]) == 0, self.rng.uniform()))
 
         default_transitions = []
         for transition in self.unique_transitions:
