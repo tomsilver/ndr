@@ -10,6 +10,7 @@ import numpy as np
 import copy
 import time
 import abc
+import itertools
 
 
 ALPHA = 0.5 # Weight on rule set size penalty
@@ -55,6 +56,7 @@ def run_greedy_search(search_operators, init_state, init_score, greedy_break=Fal
                     if verbose:
                         print("New best score:", best_score)
                         print("New best state:", state)
+                        print("from operator:", search_operator)
                     if greedy_break:
                         break
                 if max_timeout and (time.time() - start_time > max_timeout):
@@ -124,6 +126,28 @@ def print_transition(transition):
     print("  State:", transition[0])
     print("  Action:", transition[1])
     print("  Effects:", transition[2])
+
+def invert_sigma(sigma):
+    """
+    """
+    sigma_inverse = {}
+    for k, v in sigma.items():
+        if v not in sigma_inverse:
+            sigma_inverse[v] = [k]
+        else:
+            sigma_inverse[v].append(k)
+    return sigma_inverse
+
+def ground_literal_multi(lit, multi_sigma):
+    """
+    """
+    out = []
+    vals_for_vars = [multi_sigma[v] for v in lit.variables]
+    for choice in itertools.product(*vals_for_vars):
+        subs = dict(zip(lit.variables, choice))
+        ground_lit = ground_literal(lit, subs)
+        out.append(ground_lit)
+    return out
 
 def get_unique_transitions(transitions):
     """Filter out transitions that are literally (pun) identical
@@ -399,14 +423,26 @@ def get_all_possible_outcomes(rule, covered_transitions, ndr_settings=None):
         for state, action, effects in covered_transitions:
             sigma = rule.find_substitutions(state, action)
             assert sigma is not None
-            inverse_sigma = {v : k for k, v in sigma.items()}
-            # If there is some object in the effects that does not apepar in
+            sigma_inverse = invert_sigma(sigma)
+            # If there is some object in the effects that does not appear in
             # the rule, this outcome is noise
-            try:
-                lifted_effects = {ground_literal(e, inverse_sigma) for e in effects}
-            except (KeyError, TypeError):
-                continue
-            all_possible_outcomes.add(tuple(sorted(lifted_effects)))
+            lifted_effects = []
+            include_effects = True
+            for e in effects:
+                if not include_effects:
+                    break
+                try:
+                    lifted_es = ground_literal_multi(e, sigma_inverse)
+                except (KeyError, TypeError):
+                    include_effects = False
+                    break
+                # Don't allow repeated effects, for efficiency
+                if len(lifted_es) > 1:
+                    include_effects = False
+                    break
+                lifted_effects.append(lifted_es[0])
+            if include_effects:
+                all_possible_outcomes.add(tuple(sorted(lifted_effects)))
     return all_possible_outcomes
 
 def induce_outcomes(rule, covered_transitions, max_node_expansions=100, ndr_settings=None):
@@ -561,9 +597,10 @@ class ExplainExamples(SearchOperator):
         # Use them to create a new action substition
         variables = [next(variable_name_generator) for _ in a.variables]
         sigma = dict(zip(variables, a.variables))
-        sigma_inverse = {v : k for k, v in sigma.items()}
+        sigma_inverse = invert_sigma(sigma)
+        assert all(len(v) == 1 for v in sigma_inverse.values())
         # Set r's action
-        return a.predicate(*[sigma_inverse[val] for val in a.variables]), \
+        return a.predicate(*[sigma_inverse[val][0] for val in a.variables]), \
             variable_name_generator
 
     @staticmethod
@@ -574,16 +611,18 @@ class ExplainExamples(SearchOperator):
         # Helper for checks
         new_rule = NDR(action=None, preconditions=[], effect_probs=[], effects=[],
             allow_redundant_variables=ndr_settings.get('allow_redundant_variables', False))
-        new_rule.action, variable_name_generator = ExplainExamples.init_new_rule_action(transition)
-        sigma_inverse = dict(zip(a.variables, new_rule.action.variables))
+        new_rule.action, variable_name_generator = ExplainExamples.init_new_rule_action(transition,
+            ndr_settings=ndr_settings)
+        sigma = dict(zip(new_rule.action.variables, a.variables))
+        sigma_inverse = invert_sigma(sigma)
         # Build up overfitting preconds
         overfitting_preconditions = []
         # Set r's context to be the conjunction literals that can be formed using
         # the variables
         for lit in s:
             if all(val in sigma_inverse for val in lit.variables):
-                lifted_lit = ground_literal(lit, sigma_inverse)
-                overfitting_preconditions.append(lifted_lit)
+                lifted_lits = ground_literal_multi(lit, sigma_inverse)
+                overfitting_preconditions.extend(lifted_lits)
         return new_rule, sigma_inverse, variable_name_generator, overfitting_preconditions
 
     @staticmethod
@@ -608,15 +647,15 @@ class ExplainExamples(SearchOperator):
             # Create a new variable and extend sigma to map v to c
             new_variable = next(variable_name_generator)
             assert c not in sigma_inverse
-            sigma_inverse[c] = new_variable
+            sigma_inverse[c] = [new_variable]
             # Create the conjunction of literals containing c, but lifted
             d = []
             for lit in s:
                 if c not in lit.variables:
                     continue
                 if all(val in sigma_inverse for val in lit.variables):
-                    lifted_lit = ground_literal(lit, sigma_inverse)
-                    d.append(lifted_lit)
+                    lifted_lits = ground_literal_multi(lit, sigma_inverse)
+                    d.extend(lifted_lits)
             # Check if d uniquely refers to c in s
             new_rule_copy = new_rule.copy()
             new_rule_copy.preconditions.extend(overfitting_preconditions+d)
@@ -658,8 +697,6 @@ class ExplainExamples(SearchOperator):
             ndr_settings=ndr_settings)
         ## END DEPARTURE ##
 
-        if DEBUG: import ipdb; ipdb.set_trace()
-
         return overfitting_preconditions
 
     def _initialize_new_rule(self, transition, ndr_settings=None):
@@ -676,6 +713,8 @@ class ExplainExamples(SearchOperator):
         # Call InduceOutComes to create the rule's outcomes.
         covered_transitions = new_rule.get_covered_transitions(self.transitions_for_action)
         induce_outcomes(new_rule, covered_transitions, ndr_settings=ndr_settings)
+
+        if DEBUG: import ipdb; ipdb.set_trace()
         assert new_rule.effects is not None
         if DEBUG: import ipdb; ipdb.set_trace()
         return new_rule
@@ -729,8 +768,8 @@ class ExplainExamples(SearchOperator):
         # Recompute the parameters of the new rule and default rule
         default_rule = new_rule_set.default_ndr
         partitions = new_rule_set.partition_transitions(self.transitions_for_action)
-        induce_outcomes(new_rule, partitions[0])
-        induce_outcomes(default_rule, partitions[-1])
+        induce_outcomes(new_rule, partitions[0], ndr_settings=ndr_settings)
+        induce_outcomes(default_rule, partitions[-1], ndr_settings=ndr_settings)
         if DEBUG: import ipdb; ipdb.set_trace()
         return new_rule_set
 
@@ -762,6 +801,7 @@ class ExplainExamples(SearchOperator):
             # If preconditions are empty, don't enumerate; this should be covered by the default rule
             if len(new_rule.preconditions) == 0:
                 continue
+            
             # Step 3: Create a new rule set containing r
             new_rule_set = self._create_new_rule_set(action_rule_set, new_rule, ndr_settings=ndr_settings)
             # Add R' to the return rule sets R_O
