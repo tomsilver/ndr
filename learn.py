@@ -15,7 +15,6 @@ import itertools
 
 ALPHA = 0.5 # Weight on rule set size penalty
 P_MIN = 1e-8 # Probability for an individual noisy outcome
-VERBOSE = False
 DEBUG = False
 
 ## Generic search
@@ -572,6 +571,7 @@ class ExplainExamples(SearchOperator):
         self.unique_transitions = get_unique_transitions(transitions_for_action)
         self.max_transitions = max_ee_transitions
         self.rng = rng
+        self.verbose = ndr_settings.get('verbose', False)
 
     def _get_default_transitions(self, action_rule_set, ndr_settings=None):
         """Get unique transitions that are covered by the default rule
@@ -781,7 +781,7 @@ class ExplainExamples(SearchOperator):
         transitions = self._get_default_transitions(action_rule_set)
 
         for i, transition in enumerate(transitions):
-            if VERBOSE:
+            if self.verbose:
                 print("Running explain examples for action {} {}/{}".format(self.action, i, 
                     len(transitions)), end='\r')
                 if i == len(transitions) -1:
@@ -987,7 +987,7 @@ def get_search_operators(action, transitions_for_action, ndr_settings=None, **kw
     ]
 
 ## Main
-def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, 
+def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, verbose=False,
                     max_timeout=None, max_action_batch_size=None, get_batch_probs=lambda x : None,
                     init_rule_sets=None, search_method="greedy", allow_redundant_variables=False, 
                     **kwargs):
@@ -996,12 +996,12 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
     if rng is None:
         rng = np.random.RandomState(seed=0)
     
-    ndr_settings = {'allow_redundant_variables' : allow_redundant_variables}
+    ndr_settings = {'allow_redundant_variables' : allow_redundant_variables, 'verbose' : verbose}
 
     rule_sets = {}
 
     for action, transitions_for_action in transition_dataset.items():
-        if VERBOSE:
+        if verbose:
             print("Running search for action", action)
 
         if max_action_batch_size is not None and len(transitions_for_action) > max_action_batch_size:
@@ -1021,18 +1021,18 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None,
             init_score = score_action_rule_set(init_state, transitions_for_action,
                 ndr_settings=ndr_settings)
 
-        if VERBOSE:
+        if verbose:
             print("Initial rule set (score={}):".format(init_score))
             print_rule_set({action : init_state})
 
         if search_method == "greedy":
             action_rule_set = run_greedy_search(search_operators, init_state, init_score, 
                 max_timeout=max_timeout, max_node_expansions=max_node_expansions, ndr_settings=ndr_settings,
-                rng=rng, verbose=VERBOSE)
+                rng=rng, verbose=verbose)
         elif search_method == "best_first":
             action_rule_set = run_best_first_search(search_operators, init_state, init_score, 
                 max_timeout=max_timeout, max_node_expansions=max_node_expansions, ndr_settings=ndr_settings,
-                rng=rng, verbose=VERBOSE)
+                rng=rng, verbose=verbose)
         else:
             raise NotImplementedError()
 

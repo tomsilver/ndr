@@ -139,19 +139,6 @@ def test_ndr_set():
     assert partitions[2] == [transitions[3]]
     print("Test NDRSet passed.")
 
-def test_planning():
-    print("Running planning test with ground-truth NDRs")
-    with nostdout():
-        env = NDRBlocksEnv()
-        env.seed(0)
-        policy = find_policy("ff_replan", env.operators, env.action_space, env.observation_space)
-        total_returns = 0
-        for trial in range(10):
-            returns = run_policy(env, policy, verbose=False, render=False, check_reward=False)
-            total_returns += returns
-    # print("Average returns:", total_returns/10.)
-    assert total_returns == 6
-
 
 def run_integration_test(training_data, test_transitions, expect_deterministic=True):
     """Assumes deterministic
@@ -729,19 +716,6 @@ def test_system():
         import ipdb; ipdb.set_trace()
     print("Blocks integration test passed.")
 
-    # Test NDRBlocks
-    training_env = NDRBlocksEnv()
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    test_env = NDRBlocksEnv()
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False,
-        num_problems=100)
-    test_env.close()
-    assert 40 < np.sum(test_results) < 60
-    print("NDRBlocks integration test passed.")
-
     # Test TSP
     training_env = gym.make("PDDLEnvTsp-v0")
     training_env.seed(seed)
@@ -759,25 +733,6 @@ def test_system():
     assert np.sum(test_results) == 5
     print("TSP integration test passed.")
 
-    # Test PybulletBlocksEnv
-    training_env = gym.make("PDDLEnvPybulletBlocks-v0") #PybulletBlocksEnv(use_gui=False)
-    training_env.seed(seed)
-    training_data = collect_training_data(training_env,
-        # Cache this because it takes a very long time to create the dataset
-        "/tmp/pybullet_blocks_env_integration_test_dataset.pkl",
-        max_num_trials=5000,
-        num_transitions_per_problem=1,
-        max_transitions_per_action=500,
-        verbose=True)
-    training_env.close()
-    rule_set = learn_rule_set(training_data)
-    print_rule_set(rule_set)
-    test_env = gym.make("PDDLEnvPybulletBlocksTest-v0")  #PybulletBlocksEnv(use_gui=False)
-    test_results = run_test_suite(rule_set, test_env, render=False, verbose=False)
-    test_env.close()
-    assert np.sum(test_results) == 8.0
-    print("PybulletBlocksEnv integration test passed.")
-
     print("Integration tests passed.")
 
 
@@ -786,7 +741,6 @@ if __name__ == "__main__":
     start_time = time.time()
     test_ndr()
     test_ndr_set()
-    test_planning()
     test_integration1()
     test_integration2()
     test_integration3()
