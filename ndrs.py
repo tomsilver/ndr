@@ -279,7 +279,7 @@ class NDRSet:
         """Either nothing or noise happens by default
         """
         preconditions = []
-        effect_probs = [0.5, 0.5]
+        effect_probs = [0.0, 1.0]
         effects = [{ NOISE_OUTCOME }, set()]
         return NDR(action, preconditions, effect_probs, effects,
             allow_redundant_variables=allow_redundant_variables)
