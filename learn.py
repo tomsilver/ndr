@@ -966,25 +966,46 @@ class SplitOnLits(AddLits):
                 yield score, new_rule_set
 
 
-def get_search_operators(action, transitions_for_action, ndr_settings=None, **kwargs):
+def get_search_operators(action, transitions_for_action, ndr_settings=None, verbose=False, **kwargs):
     """Main search operators
     """
-    explain_examples = ExplainExamples(action, transitions_for_action, 
-        ndr_settings=ndr_settings, **kwargs)
-    add_lits = AddLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
-    drop_rules = DropRules(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
-    drop_lits = DropLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
-    drop_objects = DropObjects(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
-    split_on_lits = SplitOnLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+    operator_names = kwargs.get("search_operators", ("explain_examples", "add_lits", "drop_rules",
+        "drop_lits", "drop_objects", "split_on_lits"))
 
-    return [
-        explain_examples, 
-        add_lits, 
-        drop_rules,
-        drop_lits,
-        split_on_lits,
-        drop_objects,
-    ]
+    operators = []
+
+    if "explain_examples" in operator_names:
+        if verbose: print("Initializing ExplainExamples")
+        operator = ExplainExamples(action, transitions_for_action, 
+            ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+
+    if "add_lits" in operator_names:
+        if verbose: print("Initializing AddLits")
+        operator = AddLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+
+    if "drop_rules" in operator_names:
+        if verbose: print("Initializing DropRules")
+        operator = DropRules(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+
+    if "drop_lits" in operator_names:
+        if verbose: print("Initializing DropLits")
+        operator = DropLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+    
+    if "drop_objects" in operator_names:
+        if verbose: print("Initializing DropObjects")
+        operator = DropObjects(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+
+    if "split_on_lits" in operator_names:
+        if verbose: print("Initializing SplitOnLits")
+        operator = SplitOnLits(transitions_for_action, ndr_settings=ndr_settings, **kwargs)
+        operators.append(operator)
+
+    return operators
 
 ## Main
 def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, verbose=False,
@@ -1010,10 +1031,14 @@ def run_main_search(transition_dataset, max_node_expansions=1000, rng=None, verb
                 size=max_action_batch_size, replace=False, p=batch_probs)
             transitions_for_action = [transitions_for_action[i] for i in idxs]
 
+        if verbose:
+            print("Creating search operators")
         search_operators = get_search_operators(action, transitions_for_action, 
-            ndr_settings=ndr_settings, rng=rng, **kwargs)
+            ndr_settings=ndr_settings, rng=rng, verbose=verbose, **kwargs)
 
         if init_rule_sets is None:
+            if verbose:
+                print("Creating default rule set")
             init_score, init_state = create_default_rule_set(action, transitions_for_action,
                 ndr_settings=ndr_settings)
         else:
