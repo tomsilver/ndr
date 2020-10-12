@@ -113,7 +113,7 @@ class NDR:
             conds = [self.action] + list(self.preconditions)
             assignments = find_satisfying_assignments(kb, conds,
                 allow_redundant_variables=self._allow_redundant_variables)
-            if len(assignments) != 1:
+            if len(assignments) == 0:
                 result = None
             else:
                 result = assignments[0]
