@@ -22,7 +22,8 @@ class NDR:
     effects : [Literal]
     """
     def __init__(self, action, preconditions, effect_probs, effects,
-                 allow_redundant_variables=False):
+                 allow_redundant_variables=False,
+                 require_noise_outcome=True):
         self._action = action
         self._preconditions = preconditions
         self._effect_probs = effect_probs
@@ -33,7 +34,7 @@ class NDR:
         assert len(effect_probs) == len(effects)
 
         # Exactly one effect should have the noise outcome
-        if len(effects) > 0:
+        if require_noise_outcome and len(effects) > 0:
             assert sum([NOISE_OUTCOME in e for e in effects]) == 1
 
         self._reset_precondition_cache()
